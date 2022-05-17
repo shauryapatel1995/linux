@@ -805,6 +805,7 @@ typedef struct pglist_data {
 	wait_queue_head_t pfmemalloc_wait;
 	struct task_struct *kswapd;	/* Protected by
 					   mem_hotplug_begin/end() */
+	struct task_struct *kevictd;	
 	int kswapd_order;
 	enum zone_type kswapd_highest_zoneidx;
 

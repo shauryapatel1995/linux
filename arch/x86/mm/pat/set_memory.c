@@ -646,6 +646,7 @@ pte_t *lookup_address_in_mm(struct mm_struct *mm, unsigned long address,
 }
 EXPORT_SYMBOL_GPL(lookup_address_in_mm);
 
+
 static pte_t *_lookup_address_cpa(struct cpa_data *cpa, unsigned long address,
 				  unsigned int *level)
 {
@@ -1692,6 +1693,102 @@ out:
 	return ret;
 }
 
+static int change_page_attr_set_clr_mm(unsigned long *addr, int numpages,
+				    pgprot_t mask_set, pgprot_t mask_clr,
+				    int force_split, int in_flag,
+				    struct page **pages, struct mm_struct *mm)
+{
+	struct cpa_data cpa;
+	int ret, cache, checkalias;
+
+	memset(&cpa, 0, sizeof(cpa));
+
+	/*
+	 * Check, if we are requested to set a not supported
+	 * feature.  Clearing non-supported features is OK.
+	 */
+	mask_set = canon_pgprot(mask_set);
+
+	if (!pgprot_val(mask_set) && !pgprot_val(mask_clr) && !force_split)
+		return 0;
+
+	/* Ensure we are PAGE_SIZE aligned */
+	if (in_flag & CPA_ARRAY) {
+		int i;
+		for (i = 0; i < numpages; i++) {
+			if (addr[i] & ~PAGE_MASK) {
+				addr[i] &= PAGE_MASK;
+				WARN_ON_ONCE(1);
+			}
+		}
+	} else if (!(in_flag & CPA_PAGES_ARRAY)) {
+		/*
+		 * in_flag of CPA_PAGES_ARRAY implies it is aligned.
+		 * No need to check in that case
+		 */
+		if (*addr & ~PAGE_MASK) {
+			*addr &= PAGE_MASK;
+			/*
+			 * People should not be passing in unaligned addresses:
+			 */
+			WARN_ON_ONCE(1);
+		}
+	}
+
+	/* Must avoid aliasing mappings in the highmem code */
+	kmap_flush_unused();
+
+	vm_unmap_aliases();
+
+	cpa.vaddr = addr;
+	cpa.pages = pages;
+	cpa.numpages = numpages;
+	cpa.mask_set = mask_set;
+	cpa.mask_clr = mask_clr;
+	cpa.flags = 0;
+	cpa.curpage = 0;
+	cpa.force_split = force_split;
+    if(mm)
+        cpa.pgd = mm->pgd;
+
+	if (in_flag & (CPA_ARRAY | CPA_PAGES_ARRAY))
+		cpa.flags |= in_flag;
+
+	/* No alias checking for _NX bit modifications */
+	checkalias = (pgprot_val(mask_set) | pgprot_val(mask_clr)) != _PAGE_NX;
+	/* Has caller explicitly disabled alias checking? */
+	if (in_flag & CPA_NO_CHECK_ALIAS)
+		checkalias = 0;
+
+	ret = __change_page_attr_set_clr(&cpa, checkalias);
+
+	/*
+	 * Check whether we really changed something:
+	 */
+	if (!(cpa.flags & CPA_FLUSHTLB))
+		goto out;
+
+	/*
+	 * No need to flush, when we did not set any of the caching
+	 * attributes:
+	 */
+	cache = !!pgprot2cachemode(mask_set);
+
+	/*
+	 * On error; flush everything to be sure.
+	 */
+	if (ret) {
+		cpa_flush_all(cache);
+		goto out;
+	}
+
+	cpa_flush(&cpa, cache);
+out:
+	return ret;
+}
+
+
+
 static int change_page_attr_set_clr(unsigned long *addr, int numpages,
 				    pgprot_t mask_set, pgprot_t mask_clr,
 				    int force_split, int in_flag,
@@ -1951,6 +2048,11 @@ int set_memory_rw(unsigned long addr, int numpages)
 int set_memory_np(unsigned long addr, int numpages)
 {
 	return change_page_attr_clear(&addr, numpages, __pgprot(_PAGE_PRESENT), 0);
+}
+
+int set_memory_np_mm(unsigned long addr, int numpages, struct mm_struct *mm) {
+	return change_page_attr_set_clr_mm(&addr, numpages, __pgprot(0), __pgprot(_PAGE_PRESENT), 0,
+		(0 ? CPA_ARRAY : 0), NULL, mm);
 }
 
 int set_memory_np_noalias(unsigned long addr, int numpages)

@@ -49,7 +49,8 @@
 #include <linux/printk.h>
 #include <linux/dax.h>
 #include <linux/psi.h>
-
+#include <linux/vmalloc.h>
+#include <asm/set_memory.h>
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
 
@@ -163,6 +164,34 @@ struct scan_control {
 #else
 #define prefetchw_prev_lru_page(_page, _base, _field) do { } while (0)
 #endif
+
+/* Metadata for maintaining addr mappings. */
+static struct virt_to_addr *virt_to_addr_head = NULL; 
+static struct virt_to_addr *virt_to_addr_tail = NULL; 
+
+struct virt_to_addr *get_virt_to_addr_head() {
+    return virt_to_addr_head; 
+}
+
+struct virt_to_addr *get_virt_to_addr_tail() {
+    return virt_to_addr_tail; 
+}
+
+void add_virt_to_addr_at_tail() {
+    virt_to_addr_tail->next = vmalloc(sizeof(struct virt_to_addr));
+    virt_to_addr_tail = virt_to_addr_tail->next; 
+    virt_to_addr_tail->next = NULL; 
+}
+
+void init_virt_to_addr() { 
+    struct virt_to_addr *new = kmalloc(sizeof(struct virt_to_addr), GFP_KERNEL);
+    virt_to_addr_head = new; 
+    virt_to_addr_tail = new;
+    printk("ADDR OF HEAD IS %p, tail is %p\n", virt_to_addr_head, virt_to_addr_tail); 
+    new->next = NULL;
+}
+
+
 
 /*
  * From 0 .. 200.  Higher means more swappy.
@@ -4042,6 +4071,124 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 	finish_wait(&pgdat->kswapd_wait, &wait);
 }
 
+
+bool is_smartly_evicted_page(unsigned long long address) {
+    if(evicted == NULL) 
+        return false; 
+        
+    for(int i = 0; i < evicted->count; i++) {
+        if(evicted->addrs[i] == address) 
+            return true; 
+    }
+
+    return false; 
+}
+
+/*
+ * The smart eviction daemon, selects random pages from the inactive list
+ * and marks them for faults that we can intercept to collect data. 
+ */
+static int ksmartevictord(void *p) {
+    struct mem_cgroup *memcg;
+    evicted = kmalloc(sizeof(struct smartly_evicted_pages), __GFP_ZERO);
+	evicted->count = 0;
+    pg_data_t *pgdat = (pg_data_t*)p;
+    unsigned long nr_scanned;
+    bool not_done = true;
+    struct page * page; 
+    struct scan_control sc = {
+		.gfp_mask = GFP_HIGHUSER_MOVABLE,
+		.order = 0,
+		.may_unmap = 1,
+        .reclaim_idx = 64,
+	};
+
+    int count_addrs = 0; 
+    printk("Smart eviction module started\n");
+    for(;;) {
+        int count = 0; 
+        memcg = mem_cgroup_iter(NULL, NULL, NULL);
+         
+        do {
+            ++count;
+            if(mem_cgroup_is_root(memcg) || evicted->count > 65536) {
+                memcg = mem_cgroup_iter(NULL, memcg, NULL);
+                continue; 
+            }
+            
+            nr_scanned = 0;
+            struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
+            // Anon pages for now.
+            enum lru_list inactive_lru = LRU_INACTIVE_ANON;
+            LIST_HEAD(l_mark_for_tlb);
+            LIST_HEAD(l_inactive);
+
+            spin_lock_irq(&lruvec->lru_lock);
+            // Should return 5 inactive pages for this LRU vec.
+            // TODO - the 1024 random impl needs to change, lets get many more pages and then randomly choose among them.
+            unsigned long total_pages = memcg->memory.high;
+            isolate_lru_pages(total_pages, lruvec, &l_mark_for_tlb, &nr_scanned, &sc, inactive_lru);
+            
+            spin_unlock_irq(&lruvec->lru_lock);
+            printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
+            
+            while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
+                // _cond_resched();
+                page = lru_to_page(&l_mark_for_tlb);
+                list_del(&page->lru);
+                
+                int i;
+                bool found = false; 
+                                
+                struct virt_to_addr *head = get_virt_to_addr_head(); 
+                struct mm_struct *target_as = NULL;
+                unsigned long addr = 0; 
+                while(head != NULL) {
+                    ++count_addrs;
+                    if(head->page == page) {
+                        addr = head->virtual_address;
+                        target_as = head->mm;
+                        // printk("Found an address\n");
+                        break; 
+                    }
+                    head = head->next;
+                }
+
+                count_addrs = 0;
+                // if(addr != 0 && !virt_addr_valid(addr)) {
+                if(addr != 0) {
+                    
+                    for(i = 0; i < evicted->count; i++) {
+                        if(evicted->addrs[i] == addr) {
+                            found = true; 
+                        }
+                    }
+
+                    if(found) 
+                        continue;
+                    
+                    if(evicted->count < 65536) 
+                        evicted->addrs[evicted->count++] = addr;
+
+                    set_memory_np_mm(addr, 1, target_as);
+                } else {
+                    // printk("Checked %d addresses\n", count_addrs);
+                }
+            }
+            
+            printk("Checked %lu random pages from inactive queue\n", nr_scanned);
+            printk("Checked %d addresses\n", count_addrs);
+            count_addrs = 0;
+		    memcg = mem_cgroup_iter(NULL, memcg, NULL);
+        } while(memcg); 
+
+        printk("Checked %d memcgroups\n", count);
+        msleep(1000*20);
+    } 
+    return 0;
+
+} 
+
 /*
  * The background pageout daemon, started as a kernel thread
  * from the init process.
@@ -4235,6 +4382,16 @@ int kswapd_run(int nid)
 
 	if (pgdat->kswapd)
 		return 0;
+
+    // Init metadata for addr to page mappings. 
+    init_virt_to_addr();
+    pgdat->kevictd = kthread_run(ksmartevictord, pgdat, "kevictd%d", nid);
+
+    if(IS_ERR(pgdat->kevictd)) {
+        BUG_ON(system_state < SYSTEM_RUNNING);
+        pr_err("Failed to start smart evictor\n");
+        pgdat->kevictd = NULL;
+    }  
 
 	pgdat->kswapd = kthread_run(kswapd, pgdat, "kswapd%d", nid);
 	if (IS_ERR(pgdat->kswapd)) {

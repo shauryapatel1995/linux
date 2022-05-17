@@ -655,6 +655,17 @@ struct vm_operations_struct {
 					  unsigned long addr);
 };
 
+bool is_smartly_evicted_page(unsigned long long addr);
+
+struct smartly_evicted_pages {
+    unsigned long addrs[65536];
+    int count;
+};
+
+__attribute__((used))
+static struct smartly_evicted_pages *evicted = NULL;
+
+
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {
 	static const struct vm_operations_struct dummy_vm_ops = {};

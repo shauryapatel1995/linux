@@ -32,6 +32,8 @@
 #include <asm/pgtable_areas.h>		/* VMALLOC_START, ...		*/
 #include <asm/kvm_para.h>		/* kvm_handle_async_pf		*/
 #include <asm/vdso.h>			/* fixup_vdso_exception()	*/
+#include <asm/irq_stack.h>
+#include <asm/set_memory.h>
 
 #define CREATE_TRACE_POINTS
 #include <asm/trace/exceptions.h>
@@ -1463,11 +1465,21 @@ static __always_inline void
 handle_page_fault(struct pt_regs *regs, unsigned long error_code,
 			      unsigned long address)
 {
+
 	trace_page_fault_entries(regs, error_code, address);
 
 	if (unlikely(kmmio_fault(regs, address)))
 		return;
 
+
+    // Address needs to be masked here.
+    unsigned long addr = (address & PAGE_MASK);
+    if(is_smartly_evicted_page(addr)) {
+        // printk("Number of evicted pages is %d\n", evicted->count);
+        printk("SMARTLY EVICTED PAGE\n");
+        set_memory_rw(address, 1);
+        // set_memory_x(address, 1);
+    }
 	/* Was the fault on kernel-controlled part of the address space? */
 	if (unlikely(fault_in_kernel_space(address))) {
 		do_kern_addr_fault(regs, error_code, address);

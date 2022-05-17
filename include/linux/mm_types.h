@@ -67,6 +67,22 @@ struct mem_cgroup;
 #define _struct_page_alignment
 #endif
 
+// List to maintain high mem virtual to struct page hashmap.
+struct virt_to_addr {
+    unsigned long virtual_address; 
+    struct page *page;
+    struct mm_struct *mm;
+    struct virt_to_addr *next; 
+};
+
+struct virt_to_addr * get_virt_to_addr_head(void);
+
+struct virt_to_addr * get_virt_to_addr_tail(void);
+
+void add_virt_to_addr_at_tail(void);
+
+void init_virt_to_addr(void);
+
 struct page {
 	unsigned long flags;		/* Atomic flags, some possibly
 					 * updated asynchronously */
@@ -202,6 +218,7 @@ struct page {
 
 #ifdef CONFIG_MEMCG
 	unsigned long memcg_data;
+    // unsigned long memcg_address;
 #endif
 
 	/*
@@ -212,12 +229,12 @@ struct page {
 	 * Note that this field could be 16 bits on x86 ... ;)
 	 *
 	 * Architectures with slow multiplication can define
-	 * WANT_PAGE_VIRTUAL in asm/page.h
+ 	 * WANT_PAGE_VIRTUAL in asm/page.h
 	 */
 #if defined(WANT_PAGE_VIRTUAL)
-	void *virtual;			/* Kernel virtual address (NULL if
+	unsigned long virtual;			/* Kernel virtual address (NULL if
 					   not kmapped, ie. highmem) */
-#endif /* WANT_PAGE_VIRTUAL */
+ #endif /* WANT_PAGE_VIRTUAL */
 
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 	int _last_cpupid;
