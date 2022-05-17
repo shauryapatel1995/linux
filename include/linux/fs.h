@@ -437,6 +437,7 @@ struct address_space {
 	errseq_t		wb_err;
 	spinlock_t		private_lock;
 	struct list_head	private_list;
+    unsigned long memcg_address;
 	void			*private_data;
 } __attribute__((aligned(sizeof(long)))) __randomize_layout;
 	/*

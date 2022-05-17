@@ -99,6 +99,7 @@ struct page *mem_map;
 EXPORT_SYMBOL(mem_map);
 #endif
 
+static spinlock_t virt_to_addr_lock;
 /*
  * A number of key systems in x86 including ioremap() rely on the assumption
  * that high_memory defines the upper bound on direct map memory, then end
@@ -3806,6 +3807,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 		vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd,
 				vmf->address, &vmf->ptl);
 		if (!pte_none(*vmf->pte)) {
+            printk("Virtual address masked is %p and unmasked is %p\n", vmf->address, vmf->real_address);
 			update_mmu_tlb(vma, vmf->address, vmf->pte);
 			goto unlock;
 		}
@@ -3823,6 +3825,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	/* Allocate our own private page. */
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
+    // TODO(shaurp): Possibly the struct page we want is allocated here. 
 	page = alloc_zeroed_user_highpage_movable(vma, vmf->address);
 	if (!page)
 		goto oom;
@@ -3846,6 +3849,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd, vmf->address,
 			&vmf->ptl);
 	if (!pte_none(*vmf->pte)) {
+
 		update_mmu_cache(vma, vmf->address, vmf->pte);
 		goto release;
 	}
@@ -3860,6 +3864,23 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 		put_page(page);
 		return handle_userfault(vmf, VM_UFFD_MISSING);
 	}
+
+    // TODO(shaurp): Put into our hashmap here.
+    // printk("Allocated new page: Virtual address masked is %lx and unmasked is %lx\n", vmf->address, vmf->real_address);
+    // page->mapping = vmalloc(sizeof(struct address_space));
+    // Assumption is the tail isn't null
+    spin_lock(&virt_to_addr_lock); 
+    struct virt_to_addr *tail = get_virt_to_addr_tail();
+    
+    if(tail) {
+        tail->page = page; 
+        tail->virtual_address = vmf->address;
+        tail->mm = vma->vm_mm;
+        add_virt_to_addr_at_tail();
+        // printk("Added a page to tail\n");
+    }
+
+    spin_unlock(&virt_to_addr_lock);
 
 	inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
 	page_add_new_anon_rmap(page, vma, vmf->address, false);
@@ -4627,8 +4648,10 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 			return do_fault(vmf);
 	}
 
-	if (!pte_present(vmf->orig_pte))
-		return do_swap_page(vmf);
+	if (!pte_present(vmf->orig_pte)) {
+        return -ENOMEM;
+		//return do_swap_page(vmf);
+    }
 
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
