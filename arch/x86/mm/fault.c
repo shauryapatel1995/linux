@@ -1472,15 +1472,7 @@ handle_page_fault(struct pt_regs *regs, unsigned long error_code,
 		return;
 
 
-    // Address needs to be masked here.
-    unsigned long addr = (address & PAGE_MASK);
-    if(is_smartly_evicted_page(addr)) {
-        // printk("Number of evicted pages is %d\n", evicted->count);
-        printk("SMARTLY EVICTED PAGE\n");
-        set_memory_rw(address, 1);
-        // set_memory_x(address, 1);
-    }
-	/* Was the fault on kernel-controlled part of the address space? */
+    /* Was the fault on kernel-controlled part of the address space? */
 	if (unlikely(fault_in_kernel_space(address))) {
 		do_kern_addr_fault(regs, error_code, address);
 	} else {
