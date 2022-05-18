@@ -2053,6 +2053,12 @@ int set_memory_np(unsigned long addr, int numpages)
 	return change_page_attr_clear(&addr, numpages, __pgprot(_PAGE_PRESENT), 0);
 }
 
+int set_memory_p(unsigned long addr, int numpages, struct mm_struct *mm) {
+    return change_page_attr_set_clr_mm(&addr, numpages, __pgprot(_PAGE_PRESENT), __pgprot(0), 0,
+		(0 ? CPA_ARRAY : 0), NULL, mm);
+
+}
+
 int set_memory_np_mm(unsigned long addr, int numpages, struct mm_struct *mm) {
 	return change_page_attr_set_clr_mm(&addr, numpages, __pgprot(0), __pgprot(_PAGE_PRESENT), 0,
 		(0 ? CPA_ARRAY : 0), NULL, mm);

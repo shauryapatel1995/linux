@@ -75,8 +75,9 @@
 #include <linux/ptrace.h>
 #include <linux/vmalloc.h>
 
+#include <linux/perf_event.h>
 #include <trace/events/kmem.h>
-
+#include <asm/set_memory.h>
 #include <asm/io.h>
 #include <asm/mmu_context.h>
 #include <asm/pgalloc.h>
@@ -3509,6 +3510,19 @@ static inline bool should_try_to_free_swap(struct page *page,
 		page_count(page) == 2;
 }
 
+static vm_fault_t do_smart_page(struct vm_fault *vmf) {
+    vm_fault_t ret = 0; 
+    printk("Smartly evicted page\n");
+    
+    struct perf_event *pebs; 
+    intel_pmu_pebs_enable(pebs); 
+    if(set_memory_p(vmf->address, 1, vmf->vma->vm_mm)) {
+        return -1;     
+    }
+    return ret;
+
+}
+
 /*
  * We enter with non-exclusive mmap_lock (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
@@ -4649,8 +4663,11 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	}
 
 	if (!pte_present(vmf->orig_pte)) {
-        return -ENOMEM;
-		//return do_swap_page(vmf);
+		// TODO(shaurp): If the page is our page then do our own logic here.
+        if(is_smartly_evicted_page(vmf->address)) 
+            return do_smart_page(vmf);
+
+        return do_swap_page(vmf);
     }
 
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))

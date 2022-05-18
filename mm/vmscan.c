@@ -4449,14 +4449,14 @@ static int ksmartevictord(void *p) {
             LIST_HEAD(l_inactive);
 
             spin_lock_irq(&lruvec->lru_lock);
-            // Should return 5 inactive pages for this LRU vec.
-            // TODO - the 1024 random impl needs to change, lets get many more pages and then randomly choose among them.
             unsigned long total_pages = memcg->memory.high;
+            // TODO(shaurp): After doing this do I need to manually put pages back into the queue?
             isolate_lru_pages(total_pages, lruvec, &l_mark_for_tlb, &nr_scanned, &sc, inactive_lru);
             
             spin_unlock_irq(&lruvec->lru_lock);
             printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
-            
+           
+            // TODO(shaurp): Add sampling.
             while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
                 // _cond_resched();
                 page = lru_to_page(&l_mark_for_tlb);
