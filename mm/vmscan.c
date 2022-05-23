@@ -4111,7 +4111,7 @@ static int ksmartevictord(void *p) {
          
         do {
             ++count;
-            if(mem_cgroup_is_root(memcg) || evicted->count > 65536) {
+            if(mem_cgroup_is_root(memcg) || !(memcg->smart_eviction == 1) || evicted->count > 65536) {
                 memcg = mem_cgroup_iter(NULL, memcg, NULL);
                 continue; 
             }
