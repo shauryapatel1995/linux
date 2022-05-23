@@ -4796,6 +4796,7 @@ static ssize_t cgroup_threads_write(struct kernfs_open_file *of,
 	return __cgroup_procs_write(of, buf, false) ?: nbytes;
 }
 
+// TODO(shaurp): Figure out how to use cgroupv2 and add smart eviction file here.
 /* cgroup core interface files for the default hierarchy */
 static struct cftype cgroup_base_files[] = {
 	{
@@ -4863,6 +4864,7 @@ static struct cftype cgroup_base_files[] = {
 		.name = "cpu.stat",
 		.seq_show = cpu_stat_show,
 	},
+   
 #ifdef CONFIG_PSI
 	{
 		.name = "io.pressure",

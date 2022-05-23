@@ -3637,6 +3637,26 @@ static ssize_t mem_cgroup_write(struct kernfs_open_file *of,
 	return ret ?: nbytes;
 }
 
+static ssize_t smart_eviction_group_write(struct kernfs_open_file *of,
+				      char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+    
+    int activate, ret; 
+    buf = strstrip(buf);
+
+    if(!buf) 
+        return -EINVAL; 
+
+    ret = kstrtoint(buf, 0, &activate);
+    
+    if(ret) 
+        return ret; 
+
+    memcg->smart_eviction = activate; 
+    return nbytes; 
+}
+
 static ssize_t mem_cgroup_reset(struct kernfs_open_file *of, char *buf,
 				size_t nbytes, loff_t off)
 {
@@ -4820,6 +4840,11 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.write = mem_cgroup_reset,
 		.read_u64 = mem_cgroup_read_u64,
 	},
+	{
+		.name = "smart_eviction",
+		.write = smart_eviction_group_write,
+	},
+
 #if defined(CONFIG_MEMCG_KMEM) && \
 	(defined(CONFIG_SLAB) || defined(CONFIG_SLUB_DEBUG))
 	{
@@ -6262,6 +6287,27 @@ static ssize_t memory_oom_group_write(struct kernfs_open_file *of,
 	return nbytes;
 }
 
+/* static ssize_t smart_eviction_group_write(struct kernfs_open_file *of,
+				      char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+    
+    int activate, ret; 
+    buf = strstrip(buf);
+
+    if(!buf) 
+        return -EINVAL; 
+
+    ret = kstrtoint(buf, 0, &activate);
+    
+    if(ret) 
+        return ret; 
+
+    memcg->smart_eviction = activate; 
+    return nbytes; 
+} */
+
+
 static struct cftype memory_files[] = {
 	{
 		.name = "current",
@@ -6320,7 +6366,7 @@ static struct cftype memory_files[] = {
 		.seq_show = memory_oom_group_show,
 		.write = memory_oom_group_write,
 	},
-	{ }	/* terminate */
+    { }	/* terminate */
 };
 
 struct cgroup_subsys memory_cgrp_subsys = {
