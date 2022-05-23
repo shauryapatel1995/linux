@@ -343,7 +343,9 @@ struct mem_cgroup {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	struct deferred_split deferred_split_queue;
 #endif
-
+    
+    /* Activate smart eviction for this memcg*/
+    bool smart_eviction;
 	struct mem_cgroup_per_node *nodeinfo[];
 };
 

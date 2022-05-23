@@ -84,7 +84,7 @@
 #include <linux/uaccess.h>
 #include <asm/tlb.h>
 #include <asm/tlbflush.h>
-
+#include <uapi/linux/perf_event.h>
 #include "pgalloc-track.h"
 #include "internal.h"
 
@@ -3510,15 +3510,20 @@ static inline bool should_try_to_free_swap(struct page *page,
 		page_count(page) == 2;
 }
 
+static  void drain_pebs(struct pt_regs *regs, struct perf_sample_data *data) {
+    printk("Got some data from pebs, trying to print\n"); 
+    printk("Address is %lx\n", data->addr);
+}
+
 static vm_fault_t do_smart_page(struct vm_fault *vmf) {
     vm_fault_t ret = 0; 
-    printk("Smartly evicted page\n");
+    // printk("Smartly evicted page\n");
     
-    struct perf_event *pebs; 
-    intel_pmu_pebs_enable(pebs); 
+
     if(set_memory_p(vmf->address, 1, vmf->vma->vm_mm)) {
         return -1;     
     }
+
     return ret;
 
 }
