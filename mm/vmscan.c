@@ -4075,8 +4075,8 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 bool is_smartly_evicted_page(unsigned long long address) {
     if(evicted == NULL) 
         return false; 
-        
-    for(int i = 0; i < evicted->count; i++) {
+    int i = 0; 
+    for(i = 0; i < evicted->count; i++) {
         if(evicted->addrs[i] == address) 
             return true; 
     }
@@ -4129,7 +4129,7 @@ static int ksmartevictord(void *p) {
             isolate_lru_pages(total_pages, lruvec, &l_mark_for_tlb, &nr_scanned, &sc, inactive_lru);
             
             spin_unlock_irq(&lruvec->lru_lock);
-            printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
+            // printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
            
             // TODO(shaurp): Add sampling.
             while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
