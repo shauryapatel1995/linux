@@ -4480,7 +4480,6 @@ static int ksmartevictord(void *p) {
                 }
 
                 count_addrs = 0;
-                // if(addr != 0 && !virt_addr_valid(addr)) {
                 if(addr != 0) {
                     
                     for(i = 0; i < evicted->count; i++) {
@@ -4500,7 +4499,9 @@ static int ksmartevictord(void *p) {
                     // printk("Checked %d addresses\n", count_addrs);
                 }
             }
-            
+
+            // Move pages back to lru.
+            move_pages_to_lru(lruvec, &l_mark_for_tlb); 
             printk("Checked %lu random pages from inactive queue\n", nr_scanned);
             printk("Checked %d addresses\n", count_addrs);
             count_addrs = 0;
