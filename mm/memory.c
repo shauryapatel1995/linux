@@ -3346,8 +3346,9 @@ EXPORT_SYMBOL(unmap_mapping_range);
 /*
  *Handling pagefault for pages invalidated
  * Restore a potential device exclusive pte to a working pte entry
- */
-static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
+*/
+
+/*static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
 {
 	struct page *page = vmf->page;
 	struct vm_area_struct *vma = vmf->vma;
@@ -3370,9 +3371,9 @@ static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
 
 	mmu_notifier_invalidate_range_end(&range);
 	return 0;
-}
+} */
 
-static inline bool should_try_to_free_swap(struct page *page,
+/*static inline bool should_try_to_free_swap(struct page *page,
 					   struct vm_area_struct *vma,
 					   unsigned int fault_flags)
 {
@@ -3386,16 +3387,15 @@ static inline bool should_try_to_free_swap(struct page *page,
 	 * have to detect via the refcount if we're really the exclusive
 	 * user. Try freeing the swapcache to get rid of the swapcache
 	 * reference only in case it's likely that we'll be the exlusive user.
-	 */
+	 
 	return (fault_flags & FAULT_FLAG_WRITE) && !PageKsm(page) &&
 		page_count(page) == 2;
 }
-
+*/
 /*
-=======
  * Restore a potential device exclusive pte to a working pte entry
  */
-static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
+/* static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
 {
 	struct page *page = vmf->page;
 	struct vm_area_struct *vma = vmf->vma;
@@ -3418,7 +3418,7 @@ static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
 
 	mmu_notifier_invalidate_range_end(&range);
 	return 0;
-}
+} */
 
 static inline bool should_try_to_free_swap(struct page *page,
 					   struct vm_area_struct *vma,
@@ -3727,7 +3727,6 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 		vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd,
 				vmf->address, &vmf->ptl);
 		if (!pte_none(*vmf->pte)) {
-            printk("Virtual address masked is %p and unmasked is %p\n", vmf->address, vmf->real_address);
 			update_mmu_tlb(vma, vmf->address, vmf->pte);
 			goto unlock;
 		}
