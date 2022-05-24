@@ -161,3 +161,11 @@ x509.genkey
 
 # Documentation toolchain
 sphinx_*/
+disk_200G.raw
+file.txt
+log
+make_cgroups.sh
+qemu-ifup
+ramdisk.img
+run_qemu.sh
+
