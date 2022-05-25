@@ -3517,7 +3517,7 @@ static  void drain_pebs(struct pt_regs *regs, struct perf_sample_data *data) {
 
 static vm_fault_t do_smart_page(struct vm_fault *vmf) {
     vm_fault_t ret = 0; 
-    // printk("Smartly evicted page\n");
+    printk("Smartly evicted page\n");
     
 
     if(set_memory_p(vmf->address, 1, vmf->vma->vm_mm)) {
