@@ -3890,8 +3890,8 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
     // Assumption is the tail isn't null
     spin_lock(&virt_to_addr_lock); 
     struct virt_to_addr *tail = get_virt_to_addr_tail();
-    
-    if(tail) {
+    struct mem_cgroup *mem_cg = get_mem_cgroup_from_mm(vma->vm_mm); 
+    if(tail && (mem_cg->smart_eviction == 1)) {
         tail->page = page; 
         tail->virtual_address = vmf->address;
         tail->mm = vma->vm_mm;
