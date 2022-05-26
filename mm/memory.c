@@ -3510,16 +3510,57 @@ static inline bool should_try_to_free_swap(struct page *page,
 		page_count(page) == 2;
 }
 
-static  void drain_pebs(struct pt_regs *regs, struct perf_sample_data *data) {
+static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data, struct pt_regs *regs) {
     printk("Got some data from pebs, trying to print\n"); 
     printk("Address is %lx\n", data->addr);
+
 }
+
+
+// Activate PEBS because an inactive page access was triggered.
+// This code is actually arch specific. so we might want to do it someplace else?
+// No extra cost to transfer because we are already inside the kernel. 
+static void activate_perf() {
+    // Activate pebs only if it isn't still activated, do it for let's say 1us or something
+    // call drain pebs at the end of it.
+    // Thread creation should be fast because we don't want to waste time in page fault handling.
+    // TODO(shaurp): Could directly call perf_event_alloc here maybe with overflow handler?
+    struct perf_event_attr attr;
+    memset(&attr, 0, sizeof(struct perf_event_attr));
+
+    attr.type = PERF_TYPE_RAW;
+    attr.size = sizeof(struct perf_event_attr);
+
+    attr.config = 0x1d3;
+    attr.config1 = 0;
+    attr.sample_period = 100;
+
+    attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_WEIGHT | PERF_SAMPLE_ADDR;
+    attr.disabled = 0;
+    attr.exclude_kernel = 1;
+    attr.exclude_hv = 1;
+    attr.exclude_callchain_kernel = 1;
+    attr.exclude_callchain_user = 1;
+    attr.precise_ip = 1;
+
+    // TODO(shaurp): Seems like the context parameter is used if you need some state to be
+    // passed to the overflow handler. Confirm this. 
+    struct perf_event *event = perf_event_create_kernel_counter(&attr, 0, NULL, &drain_pebs, NULL);
+    if(IS_ERR_OR_NULL(event)) {
+        printk("Couldn't register perf event\n");
+    }
+
+}
+
 
 static vm_fault_t do_smart_page(struct vm_fault *vmf) {
     vm_fault_t ret = 0; 
     printk("Smartly evicted page\n");
     
 
+    // TODO(shaurp): The addresses that are not yet handled should be handled at 
+    // process exit.
+    activate_perf();
     if(set_memory_p(vmf->address, 1, vmf->vma->vm_mm)) {
         return -1;     
     }
@@ -3884,22 +3925,21 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 		return handle_userfault(vmf, VM_UFFD_MISSING);
 	}
 
-    // TODO(shaurp): Put into our hashmap here.
-    // printk("Allocated new page: Virtual address masked is %lx and unmasked is %lx\n", vmf->address, vmf->real_address);
-    // page->mapping = vmalloc(sizeof(struct address_space));
     // Assumption is the tail isn't null
-    spin_lock(&virt_to_addr_lock); 
-    struct virt_to_addr *tail = get_virt_to_addr_tail();
     struct mem_cgroup *mem_cg = get_mem_cgroup_from_mm(vma->vm_mm); 
-    if(tail && (mem_cg->smart_eviction == 1)) {
-        tail->page = page; 
-        tail->virtual_address = vmf->address;
-        tail->mm = vma->vm_mm;
-        add_virt_to_addr_at_tail();
-        // printk("Added a page to tail\n");
+    if(mem_cg->smart_eviction == 1) {
+        spin_lock(&virt_to_addr_lock); 
+        struct virt_to_addr *tail = get_virt_to_addr_tail();
+        if(tail) {
+            tail->page = page; 
+            tail->virtual_address = vmf->address;
+            tail->mm = vma->vm_mm;
+            add_virt_to_addr_at_tail();
+            // printk("Added a page to tail\n");
+        }
+        spin_unlock(&virt_to_addr_lock);
     }
 
-    spin_unlock(&virt_to_addr_lock);
 
 	inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
 	page_add_new_anon_rmap(page, vma, vmf->address, false);

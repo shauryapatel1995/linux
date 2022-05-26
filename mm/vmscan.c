@@ -4420,7 +4420,8 @@ static int ksmartevictord(void *p) {
     pg_data_t *pgdat = (pg_data_t*)p;
     unsigned long nr_scanned;
     bool not_done = true;
-    struct page * page; 
+    struct page * page;
+    // TODO(shaurp): Read more about scan control.
     struct scan_control sc = {
 		.gfp_mask = GFP_HIGHUSER_MOVABLE,
 		.order = 0,

@@ -12080,6 +12080,10 @@ SYSCALL_DEFINE5(perf_event_open,
 	 * opened to the cgroup directory in cgroupfs. The cpu argument
 	 * designates the cpu on which to monitor threads from that
 	 * cgroup.
+     * TODO(shaurp): This will become important when we want to 
+     * sample only from cpus where our cgroup is running.
+     * One way to solve this is by triggering our thread 
+     * through the memory.smart_eviction write handler. 
 	 */
 	if ((flags & PERF_FLAG_PID_CGROUP) && (pid == -1 || cpu == -1))
 		return -EINVAL;
