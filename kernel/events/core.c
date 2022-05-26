@@ -12002,6 +12002,7 @@ perf_check_permission(struct perf_event_attr *attr, struct task_struct *task)
 	return is_capable || ptrace_may_access(task, ptrace_mode);
 }
 
+
 /**
  * sys_perf_event_open - open a performance event, associate it to a task/cpu
  *

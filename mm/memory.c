@@ -39,6 +39,7 @@
  * Aug/Sep 2004 Changed to four level page tables (Andi Kleen)
  */
 
+#include "linux/err.h"
 #include <linux/kernel_stat.h>
 #include <linux/mm.h>
 #include <linux/mm_inline.h>
@@ -3520,7 +3521,7 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
 // Activate PEBS because an inactive page access was triggered.
 // This code is actually arch specific. so we might want to do it someplace else?
 // No extra cost to transfer because we are already inside the kernel. 
-static void activate_perf() {
+static void activate_perf(void) {
     // Activate pebs only if it isn't still activated, do it for let's say 1us or something
     // call drain pebs at the end of it.
     // Thread creation should be fast because we don't want to waste time in page fault handling.
@@ -3546,9 +3547,13 @@ static void activate_perf() {
     // TODO(shaurp): Seems like the context parameter is used if you need some state to be
     // passed to the overflow handler. Confirm this. 
     struct perf_event *event = perf_event_create_kernel_counter(&attr, 0, NULL, &drain_pebs, NULL);
-    if(IS_ERR_OR_NULL(event)) {
-        printk("Couldn't register perf event\n");
+    if(IS_ERR(event)) {
+        printk("Couldn't register perf event err is %pe\n", event);
+    } else if(event == NULL) {
+        printk("The pointer was null\n");
     }
+
+
 
 }
 
