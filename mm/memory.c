@@ -3548,6 +3548,7 @@ static void activate_perf(void) {
     // TODO(shaurp): Seems like the context parameter is used if you need some state to be
     // passed to the overflow handler. Confirm this.
     ns_capable(current_user_ns(), CAP_PERFMON);
+    printk("Am I capable? %d\n" , perfmon_capable());
     struct perf_event *event = perf_event_create_kernel_counter(&attr, 0, NULL, &drain_pebs, NULL);
     if(IS_ERR(event)) {
         printk("Couldn't register perf event err is %pe\n", event);

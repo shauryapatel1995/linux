@@ -4615,9 +4615,11 @@ find_get_context(struct pmu *pmu, struct task_struct *task,
 
 	if (!task) {
 		/* Must be root to operate on a CPU event: */
+        printk("Checking root\n");
 		err = perf_allow_cpu(&event->attr);
 		if (err)
 			return ERR_PTR(err);
+        printk("Finished checking root\n");
 
 		cpuctx = per_cpu_ptr(pmu->pmu_cpu_context, cpu);
 		ctx = &cpuctx->ctx;
