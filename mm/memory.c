@@ -64,6 +64,7 @@
 #include <linux/mmu_notifier.h>
 #include <linux/swapops.h>
 #include <linux/elf.h>
+#include <linux/cred.h>
 #include <linux/gfp.h>
 #include <linux/migrate.h>
 #include <linux/string.h>
@@ -3545,7 +3546,8 @@ static void activate_perf(void) {
     attr.precise_ip = 1;
 
     // TODO(shaurp): Seems like the context parameter is used if you need some state to be
-    // passed to the overflow handler. Confirm this. 
+    // passed to the overflow handler. Confirm this.
+    ns_capable(current_user_ns(), CAP_PERFMON);
     struct perf_event *event = perf_event_create_kernel_counter(&attr, 0, NULL, &drain_pebs, NULL);
     if(IS_ERR(event)) {
         printk("Couldn't register perf event err is %pe\n", event);
