@@ -3548,7 +3548,7 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     pte = *ptep;
     printk("Found the page\n");
     printk("Releasing event\n");
-    perf_event_release_kernel(event);
+    // perf_event_release_kernel(event);
     return;
 out:
     printk("Couldn't find the page\n");
