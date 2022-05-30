@@ -3515,14 +3515,49 @@ static inline bool should_try_to_free_swap(struct page *page,
 static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data, struct pt_regs *regs) {
     printk("Got some data from pebs, trying to print\n"); 
     printk("Address is %lx\n", data->addr);
+    pgd_t *pgd;
+    p4d_t *p4d; 
+    pte_t *ptep, pte;
+    pud_t *pud;
+    pmd_t *pmd;
 
+    struct mm_struct *mm = event->overflow_handler_context;
+    unsigned long addr = data->addr; 
+    pgd = pgd_offset(mm, addr);
+    if (pgd_none(*pgd) || pgd_bad(*pgd))
+        goto out;
+    printk(KERN_NOTICE "Valid pgd");
+
+    p4d = p4d_offset(pgd, addr);
+    if(p4d_none(*p4d) || p4d_bad(*p4d)) 
+        goto out; 
+    printk(KERN_NOTICE "Valid p4d");
+
+    pud = pud_offset(p4d, addr);
+    if (pud_none(*pud) || pud_bad(*pud))
+        goto out;
+    printk(KERN_NOTICE "Valid pud");
+
+    pmd = pmd_offset(pud, addr);
+    if (pmd_none(*pmd) || pmd_bad(*pmd))
+        goto out;
+    printk(KERN_NOTICE "Valid pmd");
+
+    ptep = pte_offset_map(pmd, addr);
+    if (!ptep)
+        goto out;
+    pte = *ptep;
+    printk("Found the page\n");
+    return; 
+out:
+    printk("Couldn't find the page\n");
 }
 
 
 // Activate PEBS because an inactive page access was triggered.
 // This code is actually arch specific. so we might want to do it someplace else?
 // No extra cost to transfer because we are already inside the kernel. 
-static void activate_perf(void) {
+static void activate_perf(struct mm_struct *mm) {
     // Activate pebs only if it isn't still activated, do it for let's say 1us or something
     // call drain pebs at the end of it.
     // Thread creation should be fast because we don't want to waste time in page fault handling.
@@ -3550,7 +3585,7 @@ static void activate_perf(void) {
     ns_capable(current_user_ns(), CAP_PERFMON);
     sysctl_perf_event_paranoid = -1; 
     printk("Am I capable? %d\n" , perfmon_capable());
-    struct perf_event *event = perf_event_create_kernel_counter(&attr, 0, NULL, &drain_pebs, NULL);
+    struct perf_event *event = perf_event_create_kernel_counter(&attr, 0, NULL, &drain_pebs, mm);
     if(IS_ERR(event)) {
         printk("Couldn't register perf event err is %pe\n", event);
     } else if(event == NULL) {
@@ -3569,7 +3604,7 @@ static vm_fault_t do_smart_page(struct vm_fault *vmf) {
 
     // TODO(shaurp): The addresses that are not yet handled should be handled at 
     // process exit.
-    activate_perf();
+    activate_perf(vmf->vma->vm_mm);
     if(set_memory_p(vmf->address, 1, vmf->vma->vm_mm)) {
         return -1;     
     }

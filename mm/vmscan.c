@@ -4498,6 +4498,7 @@ static int ksmartevictord(void *p) {
                     // TODO(shaurp): Mark page as evictable once the profiling is done.
                     PageUnevictable(page); 
                     set_memory_np_mm(addr, 1, target_as);
+                    evicted->count = 70000;
                 } else {
                     // printk("Checked %d addresses\n", count_addrs);
                 }
