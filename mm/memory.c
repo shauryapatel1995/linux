@@ -3513,8 +3513,7 @@ static inline bool should_try_to_free_swap(struct page *page,
 }
 
 static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data, struct pt_regs *regs) {
-    printk("Got some data from pebs, trying to print\n"); 
-    printk("Address is %lx\n", data->addr);
+    printk("Sampled address is %lx\n", data->addr);
     pgd_t *pgd;
     p4d_t *p4d; 
     pte_t *ptep, pte;
@@ -3548,7 +3547,9 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         goto out;
     pte = *ptep;
     printk("Found the page\n");
-    return; 
+    printk("Releasing event\n");
+    perf_event_release_kernel(event);
+    return;
 out:
     printk("Couldn't find the page\n");
 }
