@@ -3512,6 +3512,16 @@ static inline bool should_try_to_free_swap(struct page *page,
 		page_count(page) == 2;
 }
 
+static int disable_event(void *event) {
+    printk("Attempting to free event\n");
+    if(perf_event_release_kernel((struct perf_event*) event)) {
+        printk("Failed to free event\n");
+    } else {
+        printk("Event freed\n");
+    }
+    return 0; 
+}
+
 static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data, struct pt_regs *regs) {
     printk("Sampled address is %lx\n", data->addr);
     pgd_t *pgd;
@@ -3548,7 +3558,9 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     pte = *ptep;
     printk("Found the page\n");
     printk("Releasing event\n");
+    // Possibly someone else needs to do this.
     // perf_event_release_kernel(event);
+    kthread_run(disable_event, event, "disable_event%d", 0); 
     return;
 out:
     printk("Couldn't find the page\n");
@@ -3580,6 +3592,7 @@ static void activate_perf(struct mm_struct *mm) {
     attr.exclude_callchain_kernel = 1;
     attr.exclude_callchain_user = 1;
     attr.precise_ip = 1;
+
 
     // TODO(shaurp): Seems like the context parameter is used if you need some state to be
     // passed to the overflow handler. Confirm this.
