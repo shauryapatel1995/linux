@@ -4396,7 +4396,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 	finish_wait(&pgdat->kswapd_wait, &wait);
 }
 
-
+// TODO(shaurp): Definitely need locking here.
 bool is_smartly_evicted_page(unsigned long long address) {
     if(evicted == NULL) 
         return false; 
@@ -4420,8 +4420,7 @@ static int ksmartevictord(void *p) {
     pg_data_t *pgdat = (pg_data_t*)p;
     unsigned long nr_scanned;
     bool not_done = true;
-    struct page * page;
-    // TODO(shaurp): Read more about scan control.
+    struct page * page; 
     struct scan_control sc = {
 		.gfp_mask = GFP_HIGHUSER_MOVABLE,
 		.order = 0,

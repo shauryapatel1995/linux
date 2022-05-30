@@ -76,6 +76,7 @@
 #include <linux/perf_event.h>
 #include <linux/ptrace.h>
 #include <linux/vmalloc.h>
+#include <linux/delay.h>
 
 #include <linux/perf_event.h>
 #include <trace/events/kmem.h>
@@ -101,6 +102,8 @@ EXPORT_SYMBOL(max_mapnr);
 struct page *mem_map;
 EXPORT_SYMBOL(mem_map);
 #endif
+
+static volatile bool release_perf = 0; 
 
 static spinlock_t virt_to_addr_lock;
 /*
@@ -3512,16 +3515,25 @@ static inline bool should_try_to_free_swap(struct page *page,
 		page_count(page) == 2;
 }
 
-static int disable_event(void *event) {
-    printk("Attempting to free event\n");
-    if(perf_event_release_kernel((struct perf_event*) event)) {
-        printk("Failed to free event\n");
-    } else {
-        printk("Event freed\n");
-    }
-    return 0; 
+void disable_smart_event(unsigned long event) {
+
+    // while(true) {
+       //  if(release_perf) {
+            printk("Attempting to free event\n");
+            if(perf_event_release_kernel((struct perf_event*) event)) {
+                printk("Failed to free event\n");
+            } else {
+                printk("Event freed\n");
+            }
+            
+        /* } else {
+            msleep(1000);
+        }
+    } */
+    return; 
 }
 
+// Overflow handler for smart eviction pebs event.
 static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data, struct pt_regs *regs) {
     printk("Sampled address is %lx\n", data->addr);
     pgd_t *pgd;
@@ -3560,7 +3572,10 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     printk("Releasing event\n");
     // Possibly someone else needs to do this.
     // perf_event_release_kernel(event);
-    kthread_run(disable_event, event, "disable_event%d", 0); 
+    //release_perf = 1;
+    struct tasklet_struct* tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL); 
+    tasklet_init(tasklet, disable_smart_event, (unsigned long)event);
+    tasklet_schedule(tasklet);
     return;
 out:
     printk("Couldn't find the page\n");
@@ -3571,10 +3586,6 @@ out:
 // This code is actually arch specific. so we might want to do it someplace else?
 // No extra cost to transfer because we are already inside the kernel. 
 static void activate_perf(struct mm_struct *mm) {
-    // Activate pebs only if it isn't still activated, do it for let's say 1us or something
-    // call drain pebs at the end of it.
-    // Thread creation should be fast because we don't want to waste time in page fault handling.
-    // TODO(shaurp): Could directly call perf_event_alloc here maybe with overflow handler?
     struct perf_event_attr attr;
     memset(&attr, 0, sizeof(struct perf_event_attr));
 
@@ -3605,9 +3616,6 @@ static void activate_perf(struct mm_struct *mm) {
     } else if(event == NULL) {
         printk("The pointer was null\n");
     }
-
-
-
 }
 
 
@@ -3618,6 +3626,9 @@ static vm_fault_t do_smart_page(struct vm_fault *vmf) {
 
     // TODO(shaurp): The addresses that are not yet handled should be handled at 
     // process exit.
+    // This is fine but freeing is tricky. 
+    // We cannot be in a state of interrupt to free or run a new thread. 
+    // That needs to be a daemon.
     activate_perf(vmf->vma->vm_mm);
     if(set_memory_p(vmf->address, 1, vmf->vma->vm_mm)) {
         return -1;     
