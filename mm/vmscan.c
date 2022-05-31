@@ -4407,6 +4407,7 @@ bool is_smartly_evicted_page(unsigned long long address) {
     mutex_lock(evicted->mutex); 
     for(int i = 0; i < evicted->count; i++) {
         if(evicted->addrs[i]->virtual_address == address) {
+            evicted->addrs[i] = NULL;
             mutex_unlock(evicted->mutex);
             return true; 
         }
@@ -4446,12 +4447,24 @@ static int ksmartevictord(void *p) {
                 memcg = mem_cgroup_iter(NULL, memcg, NULL);
                 continue; 
             }
+
+
             long num_pages = memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON]; 
             get_random_bytes(&next_index, sizeof(next_index));
             next_index = next_index % (unsigned long long)(num_pages * 0.05);
 
-            //TODO(shaurp): Mark previous things as valid again.
-
+            // TODO(shaurp): Mark previous things as valid again.
+            // For now we assume that we are the only ones who have access to this.
+            // We could potentially put this as a new queue on memcg. 
+            mutex_lock(evicted->mutex);
+            for(int i = 0; i < evicted->count; i++) {
+                if(evicted->addrs[i]) {
+                    // TODO(shaurp): Mark page evictable.
+                    set_memory_p(evicted->addrs[i]->virtual_address, 1, evicted->addrs[i]->mm);
+                }
+            }
+            evicted->count = 0;
+            mutex_unlock(evicted->mutex);
             nr_scanned = 0;
             struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
             // Anon pages for now.
@@ -4467,7 +4480,7 @@ static int ksmartevictord(void *p) {
             // printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
 
             // TODO(shaurp): Add sampling.
-            while(!list_empty(&l_mark_for_tlb)) {
+            while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
                 // _cond_resched();
                 while(curr_index != next_index) {
                     page = lru_to_page(&l_mark_for_tlb);
@@ -4520,13 +4533,12 @@ static int ksmartevictord(void *p) {
                     mutex_lock(evicted->mutex);
                     evicted->addrs[evicted->count++] = head;
                     mutex_unlock(evicted->mutex);
-                    // TODO(shaurp): Mark page as evictable once the profiling is done.
-                    PageUnevictable(page); 
                     set_memory_np_mm(addr, 1, target_as);
                 }
             }
 
             // Move pages back to lru.
+            // This might not work as intended because we are deleting page from the list.
             move_pages_to_lru(lruvec, &l_mark_for_tlb); 
             printk("Checked %lu random pages from inactive queue\n", nr_scanned);
             printk("Checked %d addresses\n", count_addrs);
