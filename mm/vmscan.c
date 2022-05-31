@@ -29,6 +29,7 @@
 #include <linux/buffer_head.h>	/* for try_to_release_page(),
 					buffer_heads_over_limit */
 #include <linux/mm_inline.h>
+#include <linux/random.h>
 #include <linux/backing-dev.h>
 #include <linux/rmap.h>
 #include <linux/topology.h>
@@ -189,10 +190,14 @@ void add_virt_to_addr_at_tail() {
     virt_to_addr_tail->next = vmalloc(sizeof(struct virt_to_addr));
     virt_to_addr_tail = virt_to_addr_tail->next; 
     virt_to_addr_tail->next = NULL; 
+    virt_to_addr_tail->mutex = kmalloc(sizeof(struct mutex), GFP_KERNEL);
+    mutex_init(virt_to_addr_tail->mutex);
 }
 
 void init_virt_to_addr() { 
     struct virt_to_addr *new = kmalloc(sizeof(struct virt_to_addr), GFP_KERNEL);
+    new->mutex = kmalloc(sizeof(struct mutex), GFP_KERNEL);
+    mutex_init(new->mutex);
     virt_to_addr_head = new; 
     virt_to_addr_tail = new;
     printk("ADDR OF HEAD IS %p, tail is %p\n", virt_to_addr_head, virt_to_addr_tail); 
@@ -4396,16 +4401,17 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 	finish_wait(&pgdat->kswapd_wait, &wait);
 }
 
-// TODO(shaurp): Definitely need locking here.
 bool is_smartly_evicted_page(unsigned long long address) {
     if(evicted == NULL) 
         return false; 
-        
+    mutex_lock(evicted->mutex); 
     for(int i = 0; i < evicted->count; i++) {
-        if(evicted->addrs[i] == address) 
+        if(evicted->addrs[i]->virtual_address == address) {
+            mutex_unlock(evicted->mutex);
             return true; 
+        }
     }
-
+    mutex_unlock(evicted->mutex); 
     return false; 
 }
 
@@ -4433,14 +4439,19 @@ static int ksmartevictord(void *p) {
     for(;;) {
         int count = 0; 
         memcg = mem_cgroup_iter(NULL, NULL, NULL);
-         
+        u64 next_index = 0, curr_index = 0;
         do {
             ++count;
-            if(mem_cgroup_is_root(memcg) || !(memcg->smart_eviction == 1) || evicted->count > 65536) {
+            if(mem_cgroup_is_root(memcg) || !(memcg->smart_eviction == 1)) {
                 memcg = mem_cgroup_iter(NULL, memcg, NULL);
                 continue; 
             }
-            
+            long num_pages = memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON]; 
+            get_random_bytes(&next_index, sizeof(next_index));
+            next_index = next_index % (unsigned long long)(num_pages * 0.05);
+
+            //TODO(shaurp): Mark previous things as valid again.
+
             nr_scanned = 0;
             struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
             // Anon pages for now.
@@ -4450,56 +4461,68 @@ static int ksmartevictord(void *p) {
 
             spin_lock_irq(&lruvec->lru_lock);
             unsigned long total_pages = memcg->memory.high;
-            // TODO(shaurp): After doing this do I need to manually put pages back into the queue?
             isolate_lru_pages(total_pages, lruvec, &l_mark_for_tlb, &nr_scanned, &sc, inactive_lru);
-            
+
             spin_unlock_irq(&lruvec->lru_lock);
-            printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
-           
+            // printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
+
             // TODO(shaurp): Add sampling.
-            while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
+            while(!list_empty(&l_mark_for_tlb)) {
                 // _cond_resched();
-                page = lru_to_page(&l_mark_for_tlb);
-                list_del(&page->lru);
-                
+                while(curr_index != next_index) {
+                    page = lru_to_page(&l_mark_for_tlb);
+                    list_del(&page->lru);
+                    curr_index++;
+                }
+                curr_index = 0; 
+                get_random_bytes(&next_index, sizeof(next_index));
+                next_index = next_index % (unsigned long long)(num_pages * 0.05);
+
+
                 int i;
                 bool found = false; 
-                                
+
                 struct virt_to_addr *head = get_virt_to_addr_head(); 
                 struct mm_struct *target_as = NULL;
                 unsigned long addr = 0; 
+
+                // Search for the virtual address for this struct page. 
+                // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
                 while(head != NULL) {
                     ++count_addrs;
+                    mutex_lock(head->mutex);
                     if(head->page == page) {
                         addr = head->virtual_address;
                         target_as = head->mm;
                         // printk("Found an address\n");
+                        mutex_unlock(head->mutex);
                         break; 
                     }
                     head = head->next;
+                    mutex_unlock(head->mutex);
                 }
 
                 count_addrs = 0;
                 if(addr != 0) {
-                    
+                    // Check if address is already invalidated.
+                    // This will soon not be needed.
+                    mutex_lock(evicted->mutex);
                     for(i = 0; i < evicted->count; i++) {
-                        if(evicted->addrs[i] == addr) {
+                        if(evicted->addrs[i]->virtual_address == addr) {
                             found = true; 
                         }
                     }
+                    mutex_unlock(evicted->mutex);
 
-                    if(found) 
+                    if(found)
                         continue;
-                    
-                    if(evicted->count < 65536) 
-                        evicted->addrs[evicted->count++] = addr;
-                    // Mark page as unevictable.
+                    // Make this an array of mappings.
+                    mutex_lock(evicted->mutex);
+                    evicted->addrs[evicted->count++] = head;
+                    mutex_unlock(evicted->mutex);
                     // TODO(shaurp): Mark page as evictable once the profiling is done.
                     PageUnevictable(page); 
                     set_memory_np_mm(addr, 1, target_as);
-                    evicted->count = 70000;
-                } else {
-                    // printk("Checked %d addresses\n", count_addrs);
                 }
             }
 

@@ -70,11 +70,13 @@ struct mem_cgroup;
 #endif
 
 // List to maintain high mem virtual to struct page hashmap.
+// This needs a lock.
 struct virt_to_addr {
     unsigned long virtual_address; 
     struct page *page;
     struct mm_struct *mm;
-    struct virt_to_addr *next; 
+    struct virt_to_addr *next;
+    struct mutex *mutex;
 };
 
 struct virt_to_addr * get_virt_to_addr_head(void);

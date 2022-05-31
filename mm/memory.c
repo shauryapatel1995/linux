@@ -4006,11 +4006,13 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
         spin_lock(&virt_to_addr_lock); 
         struct virt_to_addr *tail = get_virt_to_addr_tail();
         if(tail) {
+            mutex_lock(tail->mutex); 
             tail->page = page; 
             tail->virtual_address = vmf->address;
             tail->mm = vma->vm_mm;
             add_virt_to_addr_at_tail();
             // printk("Added a page to tail\n");
+            mutex_unlock(tail->mutex);
         }
         spin_unlock(&virt_to_addr_lock);
     }

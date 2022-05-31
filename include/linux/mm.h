@@ -611,12 +611,14 @@ struct vm_operations_struct {
 bool is_smartly_evicted_page(unsigned long long addr);
 
 struct smartly_evicted_pages {
-    unsigned long addrs[65536];
+    struct virt_to_addr *addrs[65536];
     int count;
+    struct mutex *mutex; 
 };
 
 __attribute__((used))
 static struct smartly_evicted_pages *evicted = NULL;
+
 
 
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
