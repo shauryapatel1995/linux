@@ -4440,7 +4440,7 @@ static int ksmartevictord(void *p) {
     for(;;) {
         int count = 0; 
         memcg = mem_cgroup_iter(NULL, NULL, NULL);
-        u64 next_index = 0, curr_index = 0;
+        unsigned long next_index = 0, curr_index = 0;
         do {
             ++count;
             if(mem_cgroup_is_root(memcg) || !(memcg->smart_eviction == 1)) {
@@ -4450,8 +4450,8 @@ static int ksmartevictord(void *p) {
 
 
             long num_pages = memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON]; 
-            get_random_bytes(&next_index, sizeof(next_index));
-            next_index = next_index % (unsigned long long)(num_pages * 0.05);
+            get_random_bytes(&next_index, sizeof(next_index));  
+            next_index = next_index % (unsigned long)(num_pages * 5 / 100  );
 
             // TODO(shaurp): Mark previous things as valid again.
             // For now we assume that we are the only ones who have access to this.
@@ -4489,7 +4489,7 @@ static int ksmartevictord(void *p) {
                 }
                 curr_index = 0; 
                 get_random_bytes(&next_index, sizeof(next_index));
-                next_index = next_index % (unsigned long long)(num_pages * 0.05);
+                next_index = next_index % (unsigned long)(num_pages * 5 / 100);
 
 
                 int i;
