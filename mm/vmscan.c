@@ -4534,8 +4534,8 @@ static int ksmartevictord(void *p) {
                         mutex_unlock(head->mutex);
                         break; 
                     }
-                    head = head->next;
                     mutex_unlock(head->mutex);
+                    head = head->next;
                 }
 
                 count_addrs = 0;
