@@ -4560,9 +4560,8 @@ static int ksmartevictord(void *p) {
                 }
             }
 
-            // Move pages back to lru.
-            // This might not work as intended because we are deleting page from the list.
-            move_pages_to_lru(lruvec, &l_mark_for_tlb); 
+            // TODO(shaurp): For now commenting this out because thread seems to be stuck with a lock.
+            // move_pages_to_lru(lruvec, &l_mark_for_tlb); 
             printk("Checked %lu random pages from inactive queue\n", nr_scanned);
             printk("Checked %d addresses\n", count_addrs);
             count_addrs = 0;
