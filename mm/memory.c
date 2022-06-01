@@ -4009,6 +4009,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
         spin_lock(&virt_to_addr_lock); 
         struct virt_to_addr *tail = get_virt_to_addr_tail();
         if(tail) {
+            // This is also a potential race condition.
             mutex_lock(tail->mutex); 
             tail->page = page; 
             tail->virtual_address = vmf->address;

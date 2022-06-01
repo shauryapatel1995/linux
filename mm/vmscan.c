@@ -65,6 +65,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
 
+static spinlock_t evicted_spinlock;
+
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;
@@ -177,24 +179,33 @@ struct scan_control {
 /* Metadata for maintaining addr mappings. */
 static struct virt_to_addr *virt_to_addr_head = NULL; 
 static struct virt_to_addr *virt_to_addr_tail = NULL; 
-
+static spinlock_t virt_to_addr_lock;
 struct virt_to_addr *get_virt_to_addr_head() {
-    return virt_to_addr_head; 
+    spin_lock(&virt_to_addr_lock);
+    struct virt_to_addr *head = virt_to_addr_head;
+    spin_unlock(&virt_to_addr_lock);
+    return head; 
 }
 
 struct virt_to_addr *get_virt_to_addr_tail() {
-    return virt_to_addr_tail; 
+    spin_lock(&virt_to_addr_lock);
+    struct virt_to_addr *tail = virt_to_addr_tail;
+    spin_unlock(&virt_to_addr_lock);
+    return tail; 
 }
 
 void add_virt_to_addr_at_tail() {
+    spin_lock(&virt_to_addr_lock);
     virt_to_addr_tail->next = vmalloc(sizeof(struct virt_to_addr));
     virt_to_addr_tail = virt_to_addr_tail->next; 
     virt_to_addr_tail->next = NULL; 
     virt_to_addr_tail->mutex = kmalloc(sizeof(struct mutex), GFP_KERNEL);
     mutex_init(virt_to_addr_tail->mutex);
+    spin_unlock(&virt_to_addr_lock);
 }
 
-void init_virt_to_addr() { 
+void init_virt_to_addr() {
+    spin_lock(&virt_to_addr_lock);
     struct virt_to_addr *new = kmalloc(sizeof(struct virt_to_addr), GFP_KERNEL);
     new->mutex = kmalloc(sizeof(struct mutex), GFP_KERNEL);
     mutex_init(new->mutex);
@@ -202,6 +213,7 @@ void init_virt_to_addr() {
     virt_to_addr_tail = new;
     printk("ADDR OF HEAD IS %p, tail is %p\n", virt_to_addr_head, virt_to_addr_tail); 
     new->next = NULL;
+    spin_unlock(&virt_to_addr_lock);
 }
 
 
@@ -4402,8 +4414,13 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 }
 
 bool is_smartly_evicted_page(unsigned long long address) {
-    if(evicted == NULL) 
-        return false; 
+
+    spin_lock(&evicted_spinlock);
+    if(evicted == NULL && evicted->mutex == NULL) 
+        return false;
+    spin_unlock(&evicted_spinlock);
+
+    // Potential race condition.
     mutex_lock(evicted->mutex); 
     for(int i = 0; i < evicted->count; i++) {
         if(evicted->addrs[i]->virtual_address == address) {
@@ -4422,13 +4439,17 @@ bool is_smartly_evicted_page(unsigned long long address) {
  */
 static int ksmartevictord(void *p) {
     struct mem_cgroup *memcg;
+    
+    // Init evicted. 
+    spin_lock(&evicted_spinlock);
     evicted = kmalloc(sizeof(struct smartly_evicted_pages), __GFP_ZERO);
     evicted->mutex = kmalloc(sizeof(struct mutex), GFP_KERNEL);
     mutex_init(evicted->mutex);
 	evicted->count = 0;
+    spin_unlock(&evicted_spinlock);
+    
     pg_data_t *pgdat = (pg_data_t*)p;
     unsigned long nr_scanned;
-    bool not_done = true;
     struct page * page; 
     struct scan_control sc = {
 		.gfp_mask = GFP_HIGHUSER_MOVABLE,
@@ -4449,7 +4470,6 @@ static int ksmartevictord(void *p) {
                 memcg = mem_cgroup_iter(NULL, memcg, NULL);
                 continue; 
             }
-
 
             long num_pages = memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON]; 
             get_random_bytes(&next_index, sizeof(next_index));  
