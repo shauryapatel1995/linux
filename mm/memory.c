@@ -3577,7 +3577,7 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         struct tasklet_struct* tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL); 
         tasklet_init(tasklet, disable_smart_event, (unsigned long)event);
         tasklet_schedule(tasklet); 
-
+        perf_events = 0;
     } else {
         perf_events++;
     }
@@ -3592,6 +3592,9 @@ out:
 // This code is actually arch specific. so we might want to do it someplace else?
 // No extra cost to transfer because we are already inside the kernel. 
 static void activate_perf(struct mm_struct *mm) {
+    if(perf_events > 0)
+        return; 
+
     struct perf_event_attr attr;
     memset(&attr, 0, sizeof(struct perf_event_attr));
 
