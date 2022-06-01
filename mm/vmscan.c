@@ -4423,6 +4423,7 @@ bool is_smartly_evicted_page(unsigned long long address) {
 static int ksmartevictord(void *p) {
     struct mem_cgroup *memcg;
     evicted = kmalloc(sizeof(struct smartly_evicted_pages), __GFP_ZERO);
+    mutex_init(evicted->mutex);
 	evicted->count = 0;
     pg_data_t *pgdat = (pg_data_t*)p;
     unsigned long nr_scanned;
@@ -4453,12 +4454,13 @@ static int ksmartevictord(void *p) {
             get_random_bytes(&next_index, sizeof(next_index));  
             next_index = next_index % (unsigned long)(num_pages * 5 / 100  );
 
+            printk("Got bytes\n");
             // TODO(shaurp): Mark previous things as valid again.
             // For now we assume that we are the only ones who have access to this.
             // We could potentially put this as a new queue on memcg. 
             mutex_lock(evicted->mutex);
             for(int i = 0; i < evicted->count; i++) {
-                if(evicted->addrs[i]) {
+                if(evicted->addrs[i] != NULL) {
                     // TODO(shaurp): Mark page evictable.
                     set_memory_p(evicted->addrs[i]->virtual_address, 1, evicted->addrs[i]->mm);
                 }
