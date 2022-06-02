@@ -4473,7 +4473,7 @@ static int ksmartevictord(void *p) {
 
             long num_pages = memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON]; 
             get_random_bytes(&next_index, sizeof(next_index));  
-            next_index = next_index % (unsigned long)(num_pages * 5 / 100  );
+            next_index = next_index % (unsigned long)(num_pages >> 4 );
 
             printk("Got bytes value is %lu\n", next_index);
             // TODO(shaurp): Mark previous things as valid again.
