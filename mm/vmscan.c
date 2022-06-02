@@ -4425,7 +4425,6 @@ bool is_smartly_evicted_page(unsigned long long address) {
     mutex_lock(evicted->mutex); 
     for(int i = 0; i < evicted->count; i++) {
         if(evicted->addrs[i] && evicted->addrs[i]->virtual_address == address) {
-            // evicted->addrs[i] = NULL;
             mutex_unlock(evicted->mutex);
             return true; 
         }
@@ -4515,7 +4514,8 @@ static int ksmartevictord(void *p) {
                 // _cond_resched();
                 if(curr_index != next_index)  {    
                     page = lru_to_page(&l_mark_for_tlb);
-                    list_del(&page->lru);
+                    // TODO(shaurp): This might not be totally necessary for us.
+                    // list_del(&page->lru);
                     curr_index++;
                     continue;
                 }
