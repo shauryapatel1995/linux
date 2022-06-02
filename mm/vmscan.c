@@ -4512,7 +4512,7 @@ static int ksmartevictord(void *p) {
                 }
                 curr_index = 0; 
                 get_random_bytes(&next_index, sizeof(next_index));
-                next_index = next_index % (unsigned long)(num_pages * 5 / 100);
+                next_index = next_index % (unsigned long)(num_pages >> 4);
 
 
                 int i;
