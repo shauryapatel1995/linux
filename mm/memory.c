@@ -3688,7 +3688,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			ret = VM_FAULT_SIGBUS;
 		}
 		goto out;
-	}
+	
+    }
 
 	/* Prevent swapoff from happening to us. */
 	si = get_swap_device(entry);
@@ -4788,15 +4789,23 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 			return do_fault(vmf);
 	}
 
-	if (!pte_present(vmf->orig_pte)) {
-		// TODO(shaurp): If the page is our page then do our own logic here.
-        if(is_smartly_evicted_page(vmf->address)) 
-            return do_smart_page(vmf);
-
-        return do_swap_page(vmf);
+    // Concurrency bug here. because we are validating the page when we get back
+    // The pte is present now but pagefault thinks its not present. 
+    // Locking is required here.
+    if(is_smartly_evicted_page(vmf->address)) { 
+        return do_smart_page(vmf);
     }
 
-	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
+	if (!pte_present(vmf->orig_pte)) {
+		// TODO(shaurp): If the page is our page then do our own logic here.
+        // Handling a race condition before previous check and now here.
+        if(is_smartly_evicted_page(vmf->address)) 
+            return do_smart_page(vmf); 
+
+        return do_swap_page(vmf);
+    } 
+
+    if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
 
 	vmf->ptl = pte_lockptr(vmf->vma->vm_mm, vmf->pmd);

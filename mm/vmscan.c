@@ -4416,15 +4416,16 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 bool is_smartly_evicted_page(unsigned long long address) {
 
     spin_lock(&evicted_spinlock);
-    if(evicted == NULL && evicted->mutex == NULL) 
+    if(evicted == NULL && evicted->mutex == NULL) {
+        spin_unlock(&evicted_spinlock);
         return false;
+    }
     spin_unlock(&evicted_spinlock);
 
-    // Potential race condition.
     mutex_lock(evicted->mutex); 
     for(int i = 0; i < evicted->count; i++) {
-        if(evicted->addrs[i]->virtual_address == address) {
-            evicted->addrs[i] = NULL;
+        if(evicted->addrs[i] && evicted->addrs[i]->virtual_address == address) {
+            // evicted->addrs[i] = NULL;
             mutex_unlock(evicted->mutex);
             return true; 
         }
@@ -4478,22 +4479,23 @@ static int ksmartevictord(void *p) {
             }
 
             get_random_bytes(&next_index, sizeof(next_index)); 
-            next_index = next_index % (unsigned long)(num_pages >> 4 );
+            next_index = next_index % (unsigned long)(num_pages >> 4);
             printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
-
-            printk("Got bytes value is %lu\n", next_index);
-            // TODO(shaurp): Mark previous things as valid again.
-            // For now we assume that we are the only ones who have access to this.
-            // We could potentially put this as a new queue on memcg. 
+            // Mark previous invalidated pages as valid.
+            // This needs to hold some kind of lock that pagefault holds so 
+            // pagefaults can wait for us to make ptes present again.
             mutex_lock(evicted->mutex);
             for(int i = 0; i < evicted->count; i++) {
                 if(evicted->addrs[i] != NULL) {
-                    // TODO(shaurp): Mark page evictable.
                     set_memory_p(evicted->addrs[i]->virtual_address, 1, evicted->addrs[i]->mm);
+                    evicted->addrs[i] = NULL;
                 }
             }
+
             evicted->count = 0;
-            mutex_unlock(evicted->mutex);
+            mutex_unlock(evicted->mutex); 
+            
+
             nr_scanned = 0;
             struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
             // Anon pages for now.
@@ -4511,19 +4513,17 @@ static int ksmartevictord(void *p) {
             // TODO(shaurp): Add sampling.
             while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
                 // _cond_resched();
-                while(curr_index != next_index) {
+                if(curr_index != next_index)  {    
                     page = lru_to_page(&l_mark_for_tlb);
                     list_del(&page->lru);
                     curr_index++;
+                    continue;
                 }
                 curr_index = 0; 
+
                 get_random_bytes(&next_index, sizeof(next_index));
                 next_index = next_index % (unsigned long)(num_pages >> 4);
                 printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
-
-
-                int i;
-                bool found = false; 
 
                 struct virt_to_addr *head = get_virt_to_addr_head(); 
                 struct mm_struct *target_as = NULL;
@@ -4531,6 +4531,7 @@ static int ksmartevictord(void *p) {
 
                 // Search for the virtual address for this struct page. 
                 // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
+                printk("Finding head\n");
                 while(head != NULL) {
                     ++count_addrs;
                     mutex_lock(head->mutex);
@@ -4544,31 +4545,27 @@ static int ksmartevictord(void *p) {
                     mutex_unlock(head->mutex);
                     head = head->next;
                 }
-
+                printk("Found head\n");
                 count_addrs = 0;
                 if(addr != 0) {
                     // Check if address is already invalidated.
-                    // This will soon not be needed.
-                    mutex_lock(evicted->mutex);
-                    for(i = 0; i < evicted->count; i++) {
-                        if(evicted->addrs[i]->virtual_address == addr) {
-                            found = true; 
-                        }
-                    }
-                    mutex_unlock(evicted->mutex);
-
-                    if(found)
+                    if(is_smartly_evicted_page(addr)) 
                         continue;
-                    // Make this an array of mappings.
+                    
                     mutex_lock(evicted->mutex);
                     evicted->addrs[evicted->count++] = head;
-                    mutex_unlock(evicted->mutex);
+                    // Does this need some kind of lock to make sure pagefault isn't happening
+                    // For this address while we are changing it?
+                    printk("Setting memory\n");
                     set_memory_np_mm(addr, 1, target_as);
+                    printk("Address set\n");
+                    mutex_unlock(evicted->mutex);
                 }
             }
 
-            // TODO(shaurp): For now commenting this out because thread seems to be stuck with a lock.
-            // move_pages_to_lru(lruvec, &l_mark_for_tlb); 
+            spin_lock_irq(&lruvec->lru_lock);
+            move_pages_to_lru(lruvec, &l_mark_for_tlb); 
+            spin_unlock_irq(&lruvec->lru_lock);
             printk("Checked %lu random pages from inactive queue\n", nr_scanned);
             printk("Checked %d addresses\n", count_addrs);
             count_addrs = 0;
