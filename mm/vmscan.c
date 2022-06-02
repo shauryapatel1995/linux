@@ -4471,9 +4471,15 @@ static int ksmartevictord(void *p) {
                 continue; 
             }
 
-            long num_pages = memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON]; 
-            get_random_bytes(&next_index, sizeof(next_index));  
+            long num_pages = memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON];
+            if(num_pages == 0 || num_pages <= 16) {
+                memcg = mem_cgroup_iter(NULL, memcg, NULL);
+                continue;
+            }
+
+            get_random_bytes(&next_index, sizeof(next_index)); 
             next_index = next_index % (unsigned long)(num_pages >> 4 );
+            printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
 
             printk("Got bytes value is %lu\n", next_index);
             // TODO(shaurp): Mark previous things as valid again.
@@ -4513,6 +4519,7 @@ static int ksmartevictord(void *p) {
                 curr_index = 0; 
                 get_random_bytes(&next_index, sizeof(next_index));
                 next_index = next_index % (unsigned long)(num_pages >> 4);
+                printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
 
 
                 int i;
