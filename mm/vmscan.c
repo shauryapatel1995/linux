@@ -4501,7 +4501,7 @@ static int ksmartevictord(void *p) {
             enum lru_list inactive_lru = LRU_INACTIVE_ANON;
             LIST_HEAD(l_mark_for_tlb);
             LIST_HEAD(l_inactive);
-
+            LIST_HEAD(l_checked);
             spin_lock_irq(&lruvec->lru_lock);
             unsigned long total_pages = memcg->memory.high;
             isolate_lru_pages(total_pages, lruvec, &l_mark_for_tlb, &nr_scanned, &sc, inactive_lru);
@@ -4515,7 +4515,8 @@ static int ksmartevictord(void *p) {
                 if(curr_index != next_index)  {    
                     page = lru_to_page(&l_mark_for_tlb);
                     // TODO(shaurp): This might not be totally necessary for us.
-                    // list_del(&page->lru);
+                    list_del(&page->lru);
+                    list_add_tail(&page->lru, &l_checked);
                     curr_index++;
                     continue;
                 }
@@ -4564,7 +4565,7 @@ static int ksmartevictord(void *p) {
             }
 
             spin_lock_irq(&lruvec->lru_lock);
-            move_pages_to_lru(lruvec, &l_mark_for_tlb); 
+            move_pages_to_lru(lruvec, &l_checked); 
             spin_unlock_irq(&lruvec->lru_lock);
             printk("Checked %lu random pages from inactive queue\n", nr_scanned);
             printk("Checked %d addresses\n", count_addrs);
