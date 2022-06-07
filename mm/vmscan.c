@@ -4592,6 +4592,8 @@ static int ksmartevictord(void *p) {
  *
  * If there are applications that are active memory-allocators
  * (most normal use), this basically shouldn't matter.
+ * TODO(shaurp): Eventually change this for phase 2 where we 
+ * use information from ksmartd.
  */
 static int kswapd(void *p)
 {
