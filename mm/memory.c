@@ -3548,22 +3548,22 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     pgd = pgd_offset(mm, addr);
     if (pgd_none(*pgd) || pgd_bad(*pgd))
         goto out;
-    printk(KERN_NOTICE "Valid pgd");
+    // printk(KERN_NOTICE "Valid pgd");
 
     p4d = p4d_offset(pgd, addr);
     if(p4d_none(*p4d) || p4d_bad(*p4d)) 
         goto out; 
-    printk(KERN_NOTICE "Valid p4d");
+    // printk(KERN_NOTICE "Valid p4d");
 
     pud = pud_offset(p4d, addr);
     if (pud_none(*pud) || pud_bad(*pud))
         goto out;
-    printk(KERN_NOTICE "Valid pud");
+    // printk(KERN_NOTICE "Valid pud");
 
     pmd = pmd_offset(pud, addr);
     if (pmd_none(*pmd) || pmd_bad(*pmd))
         goto out;
-    printk(KERN_NOTICE "Valid pmd");
+    // printk(KERN_NOTICE "Valid pmd");
 
     ptep = pte_offset_map(pmd, addr);
     if (!ptep)

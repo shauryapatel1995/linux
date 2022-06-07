@@ -4479,7 +4479,7 @@ static int ksmartevictord(void *p) {
 
             get_random_bytes(&next_index, sizeof(next_index)); 
             next_index = next_index % (unsigned long)(num_pages >> 4);
-            printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
+            // printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
             // Mark previous invalidated pages as valid.
             // This needs to hold some kind of lock that pagefault holds so 
             // pagefaults can wait for us to make ptes present again.
@@ -4524,7 +4524,7 @@ static int ksmartevictord(void *p) {
 
                 get_random_bytes(&next_index, sizeof(next_index));
                 next_index = next_index % (unsigned long)(num_pages >> 4);
-                printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
+                //printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
 
                 struct virt_to_addr *head = get_virt_to_addr_head(); 
                 struct mm_struct *target_as = NULL;
@@ -4532,7 +4532,6 @@ static int ksmartevictord(void *p) {
 
                 // Search for the virtual address for this struct page. 
                 // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
-                printk("Finding head\n");
                 while(head != NULL) {
                     ++count_addrs;
                     mutex_lock(head->mutex);
@@ -4546,7 +4545,7 @@ static int ksmartevictord(void *p) {
                     mutex_unlock(head->mutex);
                     head = head->next;
                 }
-                printk("Found head\n");
+                
                 count_addrs = 0;
                 if(addr != 0) {
                     // Check if address is already invalidated.
@@ -4557,9 +4556,7 @@ static int ksmartevictord(void *p) {
                     evicted->addrs[evicted->count++] = head;
                     // Does this need some kind of lock to make sure pagefault isn't happening
                     // For this address while we are changing it?
-                    printk("Setting memory\n");
                     set_memory_np_mm(addr, 1, target_as);
-                    printk("Address set\n");
                     mutex_unlock(evicted->mutex);
                 }
             }
@@ -4568,7 +4565,7 @@ static int ksmartevictord(void *p) {
             move_pages_to_lru(lruvec, &l_checked); 
             spin_unlock_irq(&lruvec->lru_lock);
             printk("Checked %lu random pages from inactive queue\n", nr_scanned);
-            printk("Checked %d addresses\n", count_addrs);
+            // printk("Checked %d addresses\n", count_addrs);
             count_addrs = 0;
 		    memcg = mem_cgroup_iter(NULL, memcg, NULL);
         } while(memcg); 
