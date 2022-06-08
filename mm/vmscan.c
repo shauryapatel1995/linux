@@ -4508,7 +4508,8 @@ static int ksmartevictord(void *p) {
 
             spin_unlock_irq(&lruvec->lru_lock);
             // printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
-
+            
+            printk("Found memcg to check\n");
             // TODO(shaurp): Add sampling.
             while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
                 // _cond_resched();

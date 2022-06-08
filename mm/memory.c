@@ -105,6 +105,7 @@ EXPORT_SYMBOL(mem_map);
 
 static volatile int perf_events = 0; 
 
+static spinlock_t perf_lock;
 static spinlock_t virt_to_addr_lock;
 /*
  * A number of key systems in x86 including ioremap() rely on the assumption
@@ -3593,8 +3594,14 @@ out:
 // This code is actually arch specific. so we might want to do it someplace else?
 // No extra cost to transfer because we are already inside the kernel. 
 static void activate_perf(struct mm_struct *mm) {
-    if(perf_events > 0)
-        return; 
+
+    spin_lock(&perf_lock);
+    if(perf_events > 0) {
+        spin_unlock(&perf_lock);
+        return;
+    }
+    perf_events = 1; 
+    spin_unlock(&perf_lock);
 
     struct perf_event_attr attr;
     memset(&attr, 0, sizeof(struct perf_event_attr));
