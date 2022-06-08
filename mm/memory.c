@@ -3571,7 +3571,10 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         goto out;
     pte = *ptep;
     printk("Found the page\n");
-    if(perf_events >= 128) {
+    spin_lock(&perf_lock);
+    int curr_perf_events = perf_events;
+    spin_unlock(&perf_lock);
+    if(curr_perf_events >= 128) {
         printk("Releasing event\n");
         // Possibly someone else needs to do this.
         // perf_event_release_kernel(event);
@@ -3579,10 +3582,14 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         //release_perf = 1;
         // struct tasklet_struct* tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL); 
         //tasklet_init(tasklet, disable_smart_event, (unsigned long)event);
-        //tasklet_schedule(tasklet); 
+        //tasklet_schedule(tasklet);
+        spin_lock(&perf_lock);
         perf_events = 0;
+        spin_unlock(&perf_lock);
     } else {
+        spin_lock(&perf_lock);
         perf_events++;
+        spin_unlock(&perf_lock);
     }
     return;
 out:
@@ -3599,6 +3606,7 @@ static void activate_perf(struct mm_struct *mm) {
     spin_lock(&perf_lock);
     if(perf_events > 0) {
         spin_unlock(&perf_lock);
+        
         return;
     }
     perf_events = 1; 
@@ -3612,7 +3620,7 @@ static void activate_perf(struct mm_struct *mm) {
 
     attr.config = 0x1d3;
     attr.config1 = 0;
-    attr.sample_period = 15;
+    attr.sample_period = 100;
 
     attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_WEIGHT | PERF_SAMPLE_ADDR;
     attr.disabled = 0;
