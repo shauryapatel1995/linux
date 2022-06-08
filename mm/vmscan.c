@@ -4519,8 +4519,7 @@ static int ksmartevictord(void *p) {
                     list_del(&page->lru);
                     list_add_tail(&page->lru, &l_checked);
                     curr_index++;
-                    continue;
-                } while(curr_index != next_index);    
+                } while(curr_index < next_index);    
                 
                 curr_index = 0; 
 
