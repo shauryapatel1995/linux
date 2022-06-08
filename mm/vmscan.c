@@ -4422,7 +4422,8 @@ bool is_smartly_evicted_page(unsigned long long address) {
     }
     spin_unlock(&evicted_spinlock);
 
-    mutex_lock(evicted->mutex); 
+    mutex_lock(evicted->mutex);
+    // TODO(shaurp): Need a way to check the asid here or struct mm.
     for(int i = 0; i < evicted->count; i++) {
         if(evicted->addrs[i] && evicted->addrs[i]->virtual_address == address) {
             mutex_unlock(evicted->mutex);
@@ -4479,6 +4480,7 @@ static int ksmartevictord(void *p) {
 
             get_random_bytes(&next_index, sizeof(next_index)); 
             next_index = next_index % (unsigned long)(num_pages >> 4);
+            next_index++;
             // printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
             // Mark previous invalidated pages as valid.
             // This needs to hold some kind of lock that pagefault holds so 
@@ -4510,22 +4512,20 @@ static int ksmartevictord(void *p) {
             // printk("Anon pages %lu, file backed pages %lu\n", memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_ANON],  memcg->nodeinfo[pgdat->node_id]->lruvec_stats.state[NR_INACTIVE_FILE]);
             
             printk("Found memcg to check\n");
-            // TODO(shaurp): Add sampling.
             while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
-                // _cond_resched();
-
-                do {
+                
+                if(curr_index < next_index) {
                     page = lru_to_page(&l_mark_for_tlb);
-                    // TODO(shaurp): This might not be totally necessary for us.
                     list_del(&page->lru);
                     list_add_tail(&page->lru, &l_checked);
                     curr_index++;
-                } while(curr_index < next_index);    
-                
+                    continue;
+                } 
                 curr_index = 0; 
 
                 get_random_bytes(&next_index, sizeof(next_index));
                 next_index = next_index % (unsigned long)(num_pages >> 4);
+                next_index++;
                 //printk("Number of pages is %lu, random is %lu\n", num_pages, next_index);
 
                 struct virt_to_addr *head = get_virt_to_addr_head(); 
