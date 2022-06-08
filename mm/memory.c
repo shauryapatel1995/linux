@@ -3575,10 +3575,11 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         printk("Releasing event\n");
         // Possibly someone else needs to do this.
         // perf_event_release_kernel(event);
+        disable_smart_event((unsigned long)event);
         //release_perf = 1;
-        struct tasklet_struct* tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL); 
-        tasklet_init(tasklet, disable_smart_event, (unsigned long)event);
-        tasklet_schedule(tasklet); 
+        // struct tasklet_struct* tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL); 
+        //tasklet_init(tasklet, disable_smart_event, (unsigned long)event);
+        //tasklet_schedule(tasklet); 
         perf_events = 0;
     } else {
         perf_events++;
