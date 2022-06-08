@@ -4512,14 +4512,16 @@ static int ksmartevictord(void *p) {
             // TODO(shaurp): Add sampling.
             while(!list_empty(&l_mark_for_tlb) && evicted->count < 65536) {
                 // _cond_resched();
-                if(curr_index != next_index)  {    
+
+                do {
                     page = lru_to_page(&l_mark_for_tlb);
                     // TODO(shaurp): This might not be totally necessary for us.
                     list_del(&page->lru);
                     list_add_tail(&page->lru, &l_checked);
                     curr_index++;
                     continue;
-                }
+                } while(curr_index != next_index);    
+                
                 curr_index = 0; 
 
                 get_random_bytes(&next_index, sizeof(next_index));
