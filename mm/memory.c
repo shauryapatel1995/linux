@@ -3593,7 +3593,9 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     }
     return;
 out:
+    spin_lock(&perf_lock);
     perf_events++;
+    spin_unlock(&perf_lock);
     printk("Couldn't find the page\n");
 }
 
@@ -3606,9 +3608,9 @@ static void activate_perf(struct mm_struct *mm) {
     spin_lock(&perf_lock);
     if(perf_events > 0) {
         spin_unlock(&perf_lock);
-        
         return;
     }
+    printk("Perf events is %d\n" , perf_events);
     perf_events = 1; 
     spin_unlock(&perf_lock);
 
