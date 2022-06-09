@@ -105,7 +105,7 @@ EXPORT_SYMBOL(mem_map);
 
 static volatile int perf_events = 0; 
 
-static spinlock_t perf_lock;
+DEFINE_SPINLOCK(perf_lock);
 static spinlock_t virt_to_addr_lock;
 /*
  * A number of key systems in x86 including ioremap() rely on the assumption
