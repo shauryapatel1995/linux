@@ -3607,11 +3607,11 @@ static void activate_perf(struct mm_struct *mm) {
 
     spin_lock(&perf_lock);
     barrier();
-    if(!perf_events || *perf_events == 0) {
+    if(perf_events && *perf_events != 0) {
         spin_unlock(&perf_lock);
         return;
     }
-    printk("Perf events is %d, curr cpu is %d\n" , perf_events, get_cpu() );
+    printk("Perf events is %d, curr cpu is %d\n" , *perf_events, get_cpu() );
     perf_events = kmalloc(sizeof(u32), GFP_KERNEL);
     *perf_events = 1;
     barrier();
