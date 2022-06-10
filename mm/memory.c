@@ -3525,7 +3525,9 @@ void disable_smart_event(unsigned long event) {
                 printk("Failed to free event\n");
             } else {
                 printk("Event freed\n");
+                spin_lock(&perf_lock);
                 perf_events = 0; 
+                spin_unlock(&perf_lock);
             }
             
         /* } else {
