@@ -3606,6 +3606,7 @@ out:
 static void activate_perf(struct mm_struct *mm) {
 
     spin_lock(&perf_lock);
+    barrier();
     if(!perf_events || *perf_events == 0) {
         spin_unlock(&perf_lock);
         return;
