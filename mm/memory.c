@@ -3611,7 +3611,8 @@ static void activate_perf(struct mm_struct *mm) {
         return;
     }
     printk("Perf events is %d\n" , perf_events);
-    perf_events = 1; 
+    perf_events = 1;
+    barrier();
     spin_unlock(&perf_lock);
 
     struct perf_event_attr attr;
