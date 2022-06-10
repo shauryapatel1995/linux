@@ -39,6 +39,7 @@
  * Aug/Sep 2004 Changed to four level page tables (Andi Kleen)
  */
 
+#include "linux/cpumask.h"
 #include "linux/err.h"
 #include <linux/kernel_stat.h>
 #include <linux/mm.h>
@@ -3585,9 +3586,6 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         // struct tasklet_struct* tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL); 
         //tasklet_init(tasklet, disable_smart_event, (unsigned long)event);
         //tasklet_schedule(tasklet);
-        spin_lock(&perf_lock);
-        perf_events = 0;
-        spin_unlock(&perf_lock);
     } else {
         spin_lock(&perf_lock);
         perf_events++;
@@ -3612,7 +3610,7 @@ static void activate_perf(struct mm_struct *mm) {
         spin_unlock(&perf_lock);
         return;
     }
-    printk("Perf events is %d\n" , perf_events);
+    printk("Perf events is %d, curr cpu is %d\n" , perf_events, get_cpu() );
     perf_events = 1;
     barrier();
     spin_unlock(&perf_lock);
