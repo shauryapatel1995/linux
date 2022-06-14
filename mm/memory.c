@@ -104,8 +104,8 @@ struct page *mem_map;
 EXPORT_SYMBOL(mem_map);
 #endif
 
-volatile u32 * perf_events = NULL; 
-
+volatile u32 perf_events = 0; 
+static u32 perf_not_found = 0;
 DEFINE_SPINLOCK(perf_lock);
 static spinlock_t virt_to_addr_lock;
 /*
@@ -3525,9 +3525,9 @@ void disable_smart_event(unsigned long event) {
             if(perf_event_release_kernel((struct perf_event*) event)) {
                 printk("Failed to free event\n");
             } else {
-                printk("Event freed\n");
+                printk("Event freed perf_found is %d and not found is %d\n", perf_events - perf_not_found, perf_not_found);
                 spin_lock(&perf_lock);
-                *(perf_events) = 0; 
+                perf_events = 0; 
                 spin_unlock(&perf_lock);
             }
             
@@ -3540,7 +3540,7 @@ void disable_smart_event(unsigned long event) {
 
 // Overflow handler for smart eviction pebs event.
 static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data, struct pt_regs *regs) {
-    printk("Sampled address is %lx\n", data->addr);
+    // printk("Sampled address is %lx\n", data->addr);
     pgd_t *pgd;
     p4d_t *p4d; 
     pte_t *ptep, pte;
@@ -3573,9 +3573,9 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     if (!ptep)
         goto out;
     pte = *ptep;
-    printk("Found the page\n");
+    // printk("Found the page\n");
     spin_lock(&perf_lock);
-    int curr_perf_events = *perf_events;
+    int curr_perf_events = perf_events;
     spin_unlock(&perf_lock);
     if(curr_perf_events >= 128) {
         printk("Releasing event\n");
@@ -3588,15 +3588,17 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         //tasklet_schedule(tasklet);
     } else {
         spin_lock(&perf_lock);
-        *(perf_events)++;
+        perf_events++;
         spin_unlock(&perf_lock);
     }
     return;
 out:
     spin_lock(&perf_lock);
-    *(perf_events)++;
+    perf_events++;
+    perf_not_found++;
     spin_unlock(&perf_lock);
-    printk("Couldn't find the page\n");
+    // printk("Couldn't find the page\n");
+
 }
 
 
@@ -3605,18 +3607,12 @@ out:
 // No extra cost to transfer because we are already inside the kernel. 
 static void activate_perf(struct mm_struct *mm) {
 
-    spin_lock(&perf_lock);
-    barrier();
     // TODO(shaurp): Potentially crashing the kernel.
-    if(perf_events != NULL && *perf_events != 0) {
-        spin_unlock(&perf_lock);
+    if(perf_events > 0) {
         return;
     }
-    printk("Perf events is %d, curr cpu is %d\n" , *perf_events, get_cpu() );
-    perf_events = kmalloc(sizeof(u32), GFP_KERNEL);
-    *perf_events = 1;
-    barrier();
-    spin_unlock(&perf_lock);
+    printk("Perf events is %d, curr cpu is %d\n" , perf_events, get_cpu() );
+    perf_events = 1;
 
     struct perf_event_attr attr;
     memset(&attr, 0, sizeof(struct perf_event_attr));
@@ -3647,21 +3643,20 @@ static void activate_perf(struct mm_struct *mm) {
         printk("Couldn't register perf event err is %pe\n", event);
     } else if(event == NULL) {
         printk("The pointer was null\n");
-    }
+    } 
 }
 
 
 static vm_fault_t do_smart_page(struct vm_fault *vmf) {
     vm_fault_t ret = 0; 
-    printk("Smartly evicted page\n");
-    
-
     // TODO(shaurp): The addresses that are not yet handled should be handled at 
     // process exit.
     // This is fine but freeing is tricky. 
     // We cannot be in a state of interrupt to free or run a new thread. 
     // That needs to be a daemon.
+    spin_lock(&perf_lock);
     activate_perf(vmf->vma->vm_mm);
+    spin_unlock(&perf_lock);
     if(set_memory_p(vmf->address, 1, vmf->vma->vm_mm)) {
         return -1;     
     }
