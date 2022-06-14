@@ -3526,7 +3526,7 @@ void disable_smart_event(unsigned long event) {
             if(perf_event_release_kernel((struct perf_event*) event)) {
                 printk("Failed to free event\n");
             } else {
-                printk("Event freed perf_found is %d and not found is %d\n", perf_events - perf_not_found, perf_not_found);
+                printk("Event freed perf_found is %d and not found is %d\n", perf_found, perf_not_found);
                 spin_lock(&perf_lock);
                 perf_events = 0; 
                 spin_unlock(&perf_lock);
@@ -3583,6 +3583,8 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         printk("Releasing event\n");
         // Possibly someone else needs to do this.
         // perf_event_release_kernel(event);
+        // TODO(shaurp): Not sure if this is a race condition, maybe best would be 
+        // to schedule a tasklet with a small timer, this is guessable based on CPU speed?
         disable_smart_event((unsigned long)event);
         //release_perf = 1;
         // struct tasklet_struct* tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL); 
