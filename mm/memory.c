@@ -106,6 +106,7 @@ EXPORT_SYMBOL(mem_map);
 
 volatile u32 perf_events = 0; 
 static u32 perf_not_found = 0;
+static u32 perf_found = 0;
 DEFINE_SPINLOCK(perf_lock);
 static spinlock_t virt_to_addr_lock;
 /*
@@ -3576,6 +3577,7 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     // printk("Found the page\n");
     spin_lock(&perf_lock);
     int curr_perf_events = perf_events;
+    perf_found++;
     spin_unlock(&perf_lock);
     if(curr_perf_events >= 128) {
         printk("Releasing event\n");
@@ -3611,7 +3613,7 @@ static void activate_perf(struct mm_struct *mm) {
     if(perf_events > 0) {
         return;
     }
-    printk("Perf events is %d, curr cpu is %d\n" , perf_events, get_cpu() );
+    printk("Perf events is %d\n" , perf_events);
     perf_events = 1;
 
     struct perf_event_attr attr;
