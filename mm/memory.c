@@ -3600,7 +3600,11 @@ out:
     spin_lock(&perf_lock);
     perf_events++;
     perf_not_found++;
+    curr_perf_events = perf_events; 
     spin_unlock(&perf_lock);
+    
+    if(curr_perf_events >= 128) 
+        disable_smart_event((unsigned long) event);
     // printk("Couldn't find the page\n");
 
 }
