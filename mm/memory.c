@@ -3600,6 +3600,7 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     return;
 out:
     // spin_lock(&perf_lock);
+    printk("Not found\n");
     perf_events++;
     perf_not_found++;
     curr_perf_events = perf_events; 
