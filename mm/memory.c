@@ -3581,7 +3581,7 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
     int curr_perf_events = perf_events;
     perf_found++;
     // spin_unlock(&perf_lock);
-    if(curr_perf_events >= 128) {
+    if(curr_perf_events >= 64) {
         printk("Releasing event\n");
         // Possibly someone else needs to do this.
         // perf_event_release_kernel(event);
@@ -3605,7 +3605,7 @@ out:
     curr_perf_events = perf_events; 
     //spin_unlock(&perf_lock);
     
-    if(curr_perf_events >= 128) 
+    if(curr_perf_events >= 64) 
         disable_smart_event((unsigned long) event);
     // printk("Couldn't find the page\n");
 
