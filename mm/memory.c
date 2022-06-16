@@ -3540,6 +3540,8 @@ void disable_smart_event(unsigned long event) {
 }
 
 // Overflow handler for smart eviction pebs event.
+// Because of causality and use this potentially doesn't need locks.
+// Locking here will really slow down pagefaults on other CPUs.
 static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data, struct pt_regs *regs) {
     // printk("Sampled address is %lx\n", data->addr);
     pgd_t *pgd;
@@ -3575,10 +3577,10 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         goto out;
     pte = *ptep;
     // printk("Found the page\n");
-    spin_lock(&perf_lock);
+    //spin_lock(&perf_lock);
     int curr_perf_events = perf_events;
     perf_found++;
-    spin_unlock(&perf_lock);
+    // spin_unlock(&perf_lock);
     if(curr_perf_events >= 128) {
         printk("Releasing event\n");
         // Possibly someone else needs to do this.
@@ -3591,17 +3593,17 @@ static  void drain_pebs(struct perf_event *event, struct perf_sample_data *data,
         //tasklet_init(tasklet, disable_smart_event, (unsigned long)event);
         //tasklet_schedule(tasklet);
     } else {
-        spin_lock(&perf_lock);
+        //spin_lock(&perf_lock);
         perf_events++;
-        spin_unlock(&perf_lock);
+        //spin_unlock(&perf_lock);
     }
     return;
 out:
-    spin_lock(&perf_lock);
+    // spin_lock(&perf_lock);
     perf_events++;
     perf_not_found++;
     curr_perf_events = perf_events; 
-    spin_unlock(&perf_lock);
+    //spin_unlock(&perf_lock);
     
     if(curr_perf_events >= 128) 
         disable_smart_event((unsigned long) event);
