@@ -3618,7 +3618,6 @@ out:
 // No extra cost to transfer because we are already inside the kernel. 
 static void activate_perf(struct mm_struct *mm) {
 
-    // TODO(shaurp): Potentially crashing the kernel.
     if(perf_events > 0) {
         return;
     }
@@ -3648,8 +3647,7 @@ static void activate_perf(struct mm_struct *mm) {
     // passed to the overflow handler. Confirm this.
     ns_capable(current_user_ns(), CAP_PERFMON);
     sysctl_perf_event_paranoid = -1; 
-    printk("Am I capable? %d\n" , perfmon_capable());
-    struct perf_event *event = perf_event_create_kernel_counter(&attr, 0, NULL, &drain_pebs, mm);
+    struct perf_event *event = perf_event_create_kernel_counter(&attr, smp_processor_id(), NULL, &drain_pebs, mm);
     if(IS_ERR(event)) {
         printk("Couldn't register perf event err is %pe\n", event);
     } else if(event == NULL) {
