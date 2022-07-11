@@ -4780,13 +4780,13 @@ void kswapd_run(int nid)
 
     // Init metadata for addr to page mappings. 
     init_virt_to_addr();
-    pgdat->kevictd = kthread_run(ksmartevictord, pgdat, "kevictd%d", nid);
+    /* pgdat->kevictd = kthread_run(ksmartevictord, pgdat, "kevictd%d", nid);
 
     if(IS_ERR(pgdat->kevictd)) {
         BUG_ON(system_state < SYSTEM_RUNNING);
         pr_err("Failed to start smart evictor\n");
         pgdat->kevictd = NULL;
-    }  
+    }  */
 
 	pgdat->kswapd = kthread_run(kswapd, pgdat, "kswapd%d", nid);
 	if (IS_ERR(pgdat->kswapd)) {
