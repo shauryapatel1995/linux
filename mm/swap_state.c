@@ -613,6 +613,7 @@ static unsigned long swapin_nr_pages(unsigned long offset)
 struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 				struct vm_fault *vmf)
 {
+    printk("Swap in readahead cluster\n");
 	struct page *page;
 	unsigned long entry_offset = swp_offset(entry);
 	unsigned long offset = entry_offset;
@@ -788,6 +789,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				       struct vm_fault *vmf)
 {
+    printk("Swap in readahead vma\n");
 	struct blk_plug plug;
 	struct vm_area_struct *vma = vmf->vma;
 	struct page *page;

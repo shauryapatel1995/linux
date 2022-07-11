@@ -1848,6 +1848,9 @@ retry:
 			 * starts and then write it out here.
 			 */
 			try_to_unmap_flush_dirty();
+            // TODO(shaurp): Swapping happens here on a page by page basis. 
+            // Maybe we can buffer pages in pageout and change the page 
+            // selection based on group selection here. 
 			switch (pageout(folio, mapping)) {
 			case PAGE_KEEP:
 				goto keep_locked;
