@@ -3726,10 +3726,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	page = lookup_swap_cache(entry, vma, vmf->address);
 	swapcache = page;
 
+    if(swapcache)
+        printk("The page is in swapcache\n");
+
 	if (!page) {
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
 		    __swap_count(entry) == 1) {
-            printk("Synchronous IO, flags are %lu\n", si->flags); 
+            printk("Synchronous IO, flags are %lu, swap count is %d\n", si->flags, __swap_count(entry)); 
 			/* skip swapcache */
 			page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma,
 							vmf->address);
