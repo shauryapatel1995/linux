@@ -3697,6 +3697,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (!pte_unmap_same(vmf))
 		goto out;
 
+    printk("Do swap page\n");
+
 	entry = pte_to_swp_entry(vmf->orig_pte);
 	if (unlikely(non_swap_entry(entry))) {
 		if (is_migration_entry(entry)) {
@@ -3718,6 +3720,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	
     }
 
+    printk("It's a swap entry\n");
 	/* Prevent swapoff from happening to us. */
 	si = get_swap_device(entry);
 	if (unlikely(!si))
@@ -4823,9 +4826,9 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
     // Concurrency bug here. because we are validating the page when we get back
     // The pte is present now but pagefault thinks its not present. 
     // Locking is required here.
-    if(is_smartly_evicted_page(vmf->address)) { 
+    /* if(is_smartly_evicted_page(vmf->address)) { 
         return do_smart_page(vmf);
-    }
+    } */
 
 	if (!pte_present(vmf->orig_pte)) {
 		// TODO(shaurp): If the page is our page then do our own logic here.

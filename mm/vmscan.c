@@ -4419,7 +4419,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 bool is_smartly_evicted_page(unsigned long long address) {
 
     spin_lock(&evicted_spinlock);
-    if(evicted == NULL && evicted->mutex == NULL) {
+    if(evicted == NULL || evicted->mutex == NULL) {
         spin_unlock(&evicted_spinlock);
         return false;
     }
