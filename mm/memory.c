@@ -4836,6 +4836,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
         if(is_smartly_evicted_page(vmf->address)) 
             return do_smart_page(vmf); 
 
+        printk("Do swap page\n");
         return do_swap_page(vmf);
     } 
 
