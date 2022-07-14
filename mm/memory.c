@@ -4769,6 +4769,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 {
 	pte_t entry;
 
+    printk("Okay atleast handle pte fault\n");
 	if (unlikely(pmd_none(*vmf->pmd))) {
 		/*
 		 * Leave __pte_alloc() until later: because vm_ops->fault may
@@ -4816,6 +4817,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		}
 	}
 
+    printk("Checking pte\n");
 	if (!vmf->pte) {
 		if (vma_is_anonymous(vmf->vma))
 			return do_anonymous_page(vmf);
@@ -4830,9 +4832,11 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
         return do_smart_page(vmf);
     } */
 
+    printk("Checking pte present\n");
 	if (!pte_present(vmf->orig_pte)) {
 		// TODO(shaurp): If the page is our page then do our own logic here.
         // Handling a race condition before previous check and now here.
+        printk("pte not present\n");
         if(is_smartly_evicted_page(vmf->address)) 
             return do_smart_page(vmf); 
 
@@ -4840,6 +4844,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
         return do_swap_page(vmf);
     } 
 
+    printk("Present\n");
     if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
 
