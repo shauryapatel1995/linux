@@ -625,6 +625,8 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	struct vm_area_struct *vma = vmf->vma;
 	unsigned long addr = vmf->address;
 
+    // TODO(shaurp): Experiment 1, check if we don't do cluster what happens.
+    goto skip;
 	mask = swapin_nr_pages(offset) - 1;
 	if (!mask)
 		goto skip;
