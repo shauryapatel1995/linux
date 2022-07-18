@@ -853,9 +853,10 @@ skip:
 struct page *swapin_readahead(swp_entry_t entry, gfp_t gfp_mask,
 				struct vm_fault *vmf)
 {
-	return swap_use_vma_readahead() ?
+	/* return swap_use_vma_readahead() ?
 			swap_vma_readahead(entry, gfp_mask, vmf) :
-			swap_cluster_readahead(entry, gfp_mask, vmf);
+			swap_cluster_readahead(entry, gfp_mask, vmf); */
+    return swap_vma_readahead(entry, gfp_mask, vmf);
 }
 
 #ifdef CONFIG_SYSFS
