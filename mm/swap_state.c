@@ -804,7 +804,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	};
 
     // TODO(shaurp): Turning off prefetching in the kernel.
-    // goto skip;
+    goto skip;
 	swap_ra_info(vmf, &ra_info);
 	if (ra_info.win == 1)
 		goto skip;

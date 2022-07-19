@@ -4811,7 +4811,6 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		}
 	}
 
-    printk("Checking pte\n");
 	if (!vmf->pte) {
 		if (vma_is_anonymous(vmf->vma))
 			return do_anonymous_page(vmf);
@@ -4835,7 +4834,6 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
         return do_swap_page(vmf);
     } 
 
-    printk("Present\n");
     if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
 
