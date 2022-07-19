@@ -3697,8 +3697,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (!pte_unmap_same(vmf))
 		goto out;
 
-    printk("Do swap page\n");
-
 	entry = pte_to_swp_entry(vmf->orig_pte);
 	if (unlikely(non_swap_entry(entry))) {
 		if (is_migration_entry(entry)) {
@@ -3720,7 +3718,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	
     }
 
-    printk("It's a swap entry\n");
 	/* Prevent swapoff from happening to us. */
 	si = get_swap_device(entry);
 	if (unlikely(!si))
@@ -3729,8 +3726,6 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	page = lookup_swap_cache(entry, vma, vmf->address);
 	swapcache = page;
 
-    if(swapcache)
-        printk("The page is in swapcache\n");
 
 	if (!page) {
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
@@ -4769,7 +4764,6 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 {
 	pte_t entry;
 
-    printk("Okay atleast handle pte fault\n");
 	if (unlikely(pmd_none(*vmf->pmd))) {
 		/*
 		 * Leave __pte_alloc() until later: because vm_ops->fault may
@@ -4832,15 +4826,12 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
         return do_smart_page(vmf);
     } */
 
-    printk("Checking pte present\n");
 	if (!pte_present(vmf->orig_pte)) {
 		// TODO(shaurp): If the page is our page then do our own logic here.
         // Handling a race condition before previous check and now here.
-        printk("pte not present\n");
         if(is_smartly_evicted_page(vmf->address)) 
             return do_smart_page(vmf); 
 
-        printk("Do swap page\n");
         return do_swap_page(vmf);
     } 
 

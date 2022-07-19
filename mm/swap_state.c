@@ -803,6 +803,8 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		.win = 1,
 	};
 
+    // TODO(shaurp): Turning off prefetching in the kernel.
+    // goto skip;
 	swap_ra_info(vmf, &ra_info);
 	if (ra_info.win == 1)
 		goto skip;
@@ -831,6 +833,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		}
 		put_page(page);
 	}
+    // TODO(shaurp): Read about blk plg.
 	blk_finish_plug(&plug);
 	lru_add_drain();
 skip:

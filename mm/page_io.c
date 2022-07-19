@@ -350,6 +350,7 @@ int swap_readpage(struct page *page, bool synchronous)
 		}
 	}
 
+    printk("Isn't doing synchronous IO\n");
 	ret = 0;
 	bio = bio_alloc(sis->bdev, 1, REQ_OP_READ, GFP_KERNEL);
 	bio->bi_iter.bi_sector = swap_page_sector(page);
