@@ -791,7 +791,6 @@ static void swap_ra_info(struct vm_fault *vmf,
 static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 				       struct vm_fault *vmf)
 {
-    printk("Swap in readahead vma\n");
 	struct blk_plug plug;
 	struct vm_area_struct *vma = vmf->vma;
 	struct page *page;
@@ -804,7 +803,6 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	};
 
     // TODO(shaurp): Turning off prefetching in the kernel.
-    goto skip;
 	swap_ra_info(vmf, &ra_info);
 	if (ra_info.win == 1)
 		goto skip;
