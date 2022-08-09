@@ -1857,7 +1857,7 @@ retry:
             // Maybe we can buffer pages in pageout and change the page 
             // selection based on group selection here.
         
-            struct mem_cgroup *memcg = get_mem_cgroup_from_mm(folio->page.pt_mm);
+            struct mem_cgroup *memcg = page_memcg(page); 
 
             if(memcg->smart_eviction == 1) {
                     struct virt_to_addr *head = get_virt_to_addr_head(); 
@@ -1869,6 +1869,8 @@ retry:
                         if(head->page == &folio->page) {
                             printk("Address being swapped is %lx\n", head->virtual_address);
                             mutex_unlock(head->mutex);
+                            if(list_empty(page_list))
+                                printk("Done swapping\n");
                             break; 
                         }
                         mutex_unlock(head->mutex);
@@ -2011,7 +2013,7 @@ keep:
 		list_add(&page->lru, &ret_pages);
 		VM_BUG_ON_PAGE(PageLRU(page) || PageUnevictable(page), page);
 	}
-    printk("Done swapping\n");
+     
 	/* 'page_list' is always empty here */
 
 	/* Migrate pages selected for demotion */
