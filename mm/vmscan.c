@@ -1239,27 +1239,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping)
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
        
-    /* struct mem_cgroup *memcg = get_mem_cgroup_from_mm(folio->page.pt_mm);
-
-        if(memcg->smart_eviction == 1) {
-                struct virt_to_addr *head = get_virt_to_addr_head(); 
-
-                // Search for the virtual address for this struct page. 
-                // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
-                while(head != NULL) {
-                    mutex_lock(head->mutex);
-                    if(head->page == &folio->page) {
-                        addr = head->virtual_address;
-                        mutex_unlock(head->mutex);
-                        break; 
-                    }
-                    mutex_unlock(head->mutex);
-                    head = head->next;
-                }
-         }
-    */
-
-	if (folio_clear_dirty_for_io(folio)) {
+   	if (folio_clear_dirty_for_io(folio)) {
 		int res;
 		struct writeback_control wbc = {
 			.sync_mode = WB_SYNC_NONE,
@@ -1875,7 +1855,29 @@ retry:
 			try_to_unmap_flush_dirty();
             // TODO(shaurp): Swapping happens here on a page by page basis. 
             // Maybe we can buffer pages in pageout and change the page 
-            // selection based on group selection here. 
+            // selection based on group selection here.
+        
+            struct mem_cgroup *memcg = get_mem_cgroup_from_mm(folio->page.pt_mm);
+
+            if(memcg->smart_eviction == 1) {
+                    struct virt_to_addr *head = get_virt_to_addr_head(); 
+
+                    // Search for the virtual address for this struct page. 
+                    // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
+                    while(head != NULL) {
+                        mutex_lock(head->mutex);
+                        if(head->page == &folio->page) {
+                            printk("Address being swapped is %lx\n", head->virtual_address);
+                            mutex_unlock(head->mutex);
+                            break; 
+                        }
+                        mutex_unlock(head->mutex);
+                        head = head->next;
+                    }
+             }
+        
+
+
 			switch (pageout(folio, mapping)) {
 			case PAGE_KEEP:
 				goto keep_locked;
