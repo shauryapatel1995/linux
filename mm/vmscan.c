@@ -2006,6 +2006,7 @@ keep:
 		list_add(&page->lru, &ret_pages);
 		VM_BUG_ON_PAGE(PageLRU(page) || PageUnevictable(page), page);
 	}
+    printk("Done swapping\n");
 	/* 'page_list' is always empty here */
 
 	/* Migrate pages selected for demotion */
