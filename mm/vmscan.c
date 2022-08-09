@@ -1203,6 +1203,7 @@ typedef enum {
  */
 static pageout_t pageout(struct folio *folio, struct address_space *mapping)
 {
+    unsigned long addr = 0; 
 	/*
 	 * If the folio is dirty, only perform writeback if that write
 	 * will be non-blocking.  To prevent this allocation from being
@@ -1237,6 +1238,26 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping)
 	}
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
+       
+    /* struct mem_cgroup *memcg = get_mem_cgroup_from_mm(folio->page.pt_mm);
+
+        if(memcg->smart_eviction == 1) {
+                struct virt_to_addr *head = get_virt_to_addr_head(); 
+
+                // Search for the virtual address for this struct page. 
+                // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
+                while(head != NULL) {
+                    mutex_lock(head->mutex);
+                    if(head->page == &folio->page) {
+                        addr = head->virtual_address;
+                        mutex_unlock(head->mutex);
+                        break; 
+                    }
+                    mutex_unlock(head->mutex);
+                    head = head->next;
+                }
+         }
+    */
 
 	if (folio_clear_dirty_for_io(folio)) {
 		int res;
@@ -1250,31 +1271,13 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping)
 
 		folio_set_reclaim(folio);
         // TODO(shaurp): Writing page here, find out virtual address.
-        struct mem_cgroup *memcg = get_mem_cgroup_from_mm(folio->page.pt_mm);
-
-        if(memcg->smart_eviction == 1) {
-                struct virt_to_addr *head = get_virt_to_addr_head(); 
-                unsigned long addr = 0; 
-
-                // Search for the virtual address for this struct page. 
-                // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
-                while(head != NULL) {
-                    mutex_lock(head->mutex);
-                    if(head->page == &folio->page) {
-                        addr = head->virtual_address;
-                        printk("Swap addr is %lx\n",addr);
-                        mutex_unlock(head->mutex);
-                        break; 
-                    }
-                    mutex_unlock(head->mutex);
-                    head = head->next;
-                }
-         }
-
-		res = mapping->a_ops->writepage(&folio->page, &wbc);
+        // maybe this will dirty it?
+        res = mapping->a_ops->writepage(&folio->page, &wbc);
 		if (res < 0)
 			handle_write_error(mapping, folio, res);
 		if (res == AOP_WRITEPAGE_ACTIVATE) {
+            printk("Swap addr is %lx\n",addr);
+            addr = 0;
 			folio_clear_reclaim(folio);
 			return PAGE_ACTIVATE;
 		}
