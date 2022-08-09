@@ -1249,6 +1249,28 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping)
 		};
 
 		folio_set_reclaim(folio);
+        // TODO(shaurp): Writing page here, find out virtual address.
+        struct mem_cgroup *memcg = get_mem_cgroup_from_mm(folio->page.pt_mm);
+
+        if(memcg->smart_eviction == 1) {
+                struct virt_to_addr *head = get_virt_to_addr_head(); 
+                unsigned long addr = 0; 
+
+                // Search for the virtual address for this struct page. 
+                // TODO(shaurp): Eventually make this O(1) by adding this to struct page.
+                while(head != NULL) {
+                    mutex_lock(head->mutex);
+                    if(head->page == &folio->page) {
+                        addr = head->virtual_address;
+                        printk("Swap addr is %lx\n",addr);
+                        mutex_unlock(head->mutex);
+                        break; 
+                    }
+                    mutex_unlock(head->mutex);
+                    head = head->next;
+                }
+         }
+
 		res = mapping->a_ops->writepage(&folio->page, &wbc);
 		if (res < 0)
 			handle_write_error(mapping, folio, res);
@@ -2158,6 +2180,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		nr_taken += nr_pages;
 		nr_zone_taken[page_zonenum(page)] += nr_pages;
 		move_to = dst;
+        // TODO(shaurp): Add a potential print here to print virtual address.
 move:
 		list_move(&page->lru, move_to);
 	}
@@ -2394,6 +2417,7 @@ shrink_inactive_list(unsigned long nr_to_scan, struct lruvec *lruvec,
 	nr_taken = isolate_lru_pages(nr_to_scan, lruvec, &page_list,
 				     &nr_scanned, sc, lru);
 
+    // TODO(shaurp): We can just print the page list here.
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, nr_taken);
 	item = current_is_kswapd() ? PGSCAN_KSWAPD : PGSCAN_DIRECT;
 	if (!cgroup_reclaim(sc))
