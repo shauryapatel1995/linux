@@ -3726,7 +3726,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	page = lookup_swap_cache(entry, vma, vmf->address);
 	swapcache = page;
 
-
+    // TODO(jackson): Instrument here.
+    // Swap offset can be obtained from entry.
+    // Virt address can be obtained from vm_fault.
+    // Get proc ID
 	if (!page) {
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
 		    __swap_count(entry) == 1) {
