@@ -3695,7 +3695,6 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	printk(KERN_CRIT "\"%d PF addr and ip\", %lx, %lx\n", qemu_page_count, vmf->address, regs->ip);
 	qemu_page_count++;
 
-#ifdef PRINT_PAGE_CONTENT
 	/* Maybe try to print out the page content */
 	long* p = (long*) vmf->address;
 	// print the content of the page
@@ -3703,7 +3702,6 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	for (i = 0; i < total_num; i += increment) {
 		printk(KERN_CRIT "%lx, %lx, %lx, %lx, %lx, %lx, %lx, %lx, %lx\n",i, p[i], p[i+1], p[i+2], p[i+3], p[i+4], p[i+5], p[i+6], p[i+7]); 
 	}
-#endif
 
 unlock:
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
