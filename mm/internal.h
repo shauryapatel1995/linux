@@ -62,6 +62,7 @@ static inline void wake_throttle_isolated(pg_data_t *pgdat)
 }
 
 vm_fault_t do_swap_page(struct vm_fault *vmf);
+vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs);
 void folio_rotate_reclaimable(struct folio *folio);
 bool __folio_end_writeback(struct folio *folio);
 

@@ -98,6 +98,14 @@ struct page *mem_map;
 EXPORT_SYMBOL(mem_map);
 #endif
 
+
+/**
+ * Where I deal with qemu trace collecter symbols and global variables
+ */
+// #define PRINT_PAGE_CONTENT
+#undef PRINT_PAGE_CONTENT
+int qemu_page_count = 0;
+
 /*
  * A number of key systems in x86 including ioremap() rely on the assumption
  * that high_memory defines the upper bound on direct map memory, then end
@@ -3458,7 +3466,6 @@ static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
 	mmu_notifier_invalidate_range_end(&range);
 	return 0;
 }
-
 /*
  * We enter with non-exclusive mmap_lock (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
@@ -3467,7 +3474,7 @@ static vm_fault_t remove_device_exclusive_entry(struct vm_fault *vmf)
  * We return with the mmap_lock locked or unlocked in the same cases
  * as does filemap_fault().
  */
-vm_fault_t do_swap_page(struct vm_fault *vmf)
+vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 {
 	struct vm_area_struct *vma = vmf->vma;
 	struct page *page = NULL, *swapcache;
@@ -3479,6 +3486,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	vm_fault_t ret = 0;
 	void *shadow = NULL;
 
+	// printk(KERN_CRIT "\"1. Page fault at address\", %lx\n", vmf->address);
 	if (!pte_unmap_same(vmf))
 		goto out;
 
@@ -3511,6 +3519,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	page = lookup_swap_cache(entry, vma, vmf->address);
 	swapcache = page;
 
+
 	if (!page) {
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
 		    __swap_count(entry) == 1) {
@@ -3520,6 +3529,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			if (page) {
 				__SetPageLocked(page);
 				__SetPageSwapBacked(page);
+
+				// printk(KERN_CRIT "\"2. Page fault at address\", %lx\n", vmf->address);
 
 				if (mem_cgroup_swapin_charge_page(page,
 					vma->vm_mm, GFP_KERNEL, entry)) {
@@ -3544,6 +3555,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			swapcache = page;
+
+
 		}
 
 		if (!page) {
@@ -3678,6 +3691,20 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(vma, vmf->address, vmf->pte);
+
+	printk(KERN_CRIT "\"%d PF addr and ip\", %lx, %lx\n", qemu_page_count, vmf->address, regs->ip);
+	qemu_page_count++;
+
+#ifdef PRINT_PAGE_CONTENT
+	/* Maybe try to print out the page content */
+	long* p = (long*) vmf->address;
+	// print the content of the page
+	int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
+	for (i = 0; i < total_num; i += increment) {
+		printk(KERN_CRIT "%lx, %lx, %lx, %lx, %lx, %lx, %lx, %lx, %lx\n",i, p[i], p[i+1], p[i+2], p[i+3], p[i+4], p[i+5], p[i+6], p[i+7]); 
+	}
+#endif
+
 unlock:
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 out:
@@ -3689,6 +3716,258 @@ out_nomap:
 out_page:
 	unlock_page(page);
 out_release:
+	// printk(KERN_CRIT "\"3. Page fault at address\", %lx\n", vmf->address);
+
+	put_page(page);
+	if (page != swapcache && swapcache) {
+		unlock_page(swapcache);
+		put_page(swapcache);
+	}
+	if (si)
+		put_swap_device(si);
+	return ret;
+}
+
+
+/*
+ * We enter with non-exclusive mmap_lock (to exclude vma changes,
+ * but allow concurrent faults), and pte mapped but not yet locked.
+ * We return with pte unmapped and unlocked.
+ *
+ * We return with the mmap_lock locked or unlocked in the same cases
+ * as does filemap_fault().
+ */
+vm_fault_t do_swap_page(struct vm_fault *vmf)
+{
+	struct vm_area_struct *vma = vmf->vma;
+	struct page *page = NULL, *swapcache;
+	struct swap_info_struct *si = NULL;
+	swp_entry_t entry;
+	pte_t pte;
+	int locked;
+	int exclusive = 0;
+	vm_fault_t ret = 0;
+	void *shadow = NULL;
+
+	// printk(KERN_CRIT "\"1. Page fault at address\", %lx\n", vmf->address);
+	if (!pte_unmap_same(vmf))
+		goto out;
+
+	entry = pte_to_swp_entry(vmf->orig_pte);
+	if (unlikely(non_swap_entry(entry))) {
+		if (is_migration_entry(entry)) {
+			migration_entry_wait(vma->vm_mm, vmf->pmd,
+					     vmf->address);
+		} else if (is_device_exclusive_entry(entry)) {
+			vmf->page = pfn_swap_entry_to_page(entry);
+			ret = remove_device_exclusive_entry(vmf);
+		} else if (is_device_private_entry(entry)) {
+			vmf->page = pfn_swap_entry_to_page(entry);
+			ret = vmf->page->pgmap->ops->migrate_to_ram(vmf);
+		} else if (is_hwpoison_entry(entry)) {
+			ret = VM_FAULT_HWPOISON;
+		} else {
+			print_bad_pte(vma, vmf->address, vmf->orig_pte, NULL);
+			ret = VM_FAULT_SIGBUS;
+		}
+		goto out;
+	}
+
+	/* Prevent swapoff from happening to us. */
+	si = get_swap_device(entry);
+	if (unlikely(!si))
+		goto out;
+
+	delayacct_set_flag(current, DELAYACCT_PF_SWAPIN);
+	page = lookup_swap_cache(entry, vma, vmf->address);
+	swapcache = page;
+
+
+	if (!page) {
+		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
+		    __swap_count(entry) == 1) {
+			/* skip swapcache */
+			page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma,
+							vmf->address);
+			if (page) {
+				__SetPageLocked(page);
+				__SetPageSwapBacked(page);
+
+				// printk(KERN_CRIT "\"2. Page fault at address\", %lx\n", vmf->address);
+
+				if (mem_cgroup_swapin_charge_page(page,
+					vma->vm_mm, GFP_KERNEL, entry)) {
+					ret = VM_FAULT_OOM;
+					goto out_page;
+				}
+				mem_cgroup_swapin_uncharge_swap(entry);
+
+				shadow = get_shadow_from_swap_cache(entry);
+				if (shadow)
+					workingset_refault(page_folio(page),
+								shadow);
+
+				lru_cache_add(page);
+
+				/* To provide entry to swap_readpage() */
+				set_page_private(page, entry.val);
+				swap_readpage(page, true);
+				set_page_private(page, 0);
+			}
+		} else {
+			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
+						vmf);
+			swapcache = page;
+
+
+		}
+
+		if (!page) {
+			/*
+			 * Back out if somebody else faulted in this pte
+			 * while we released the pte lock.
+			 */
+			vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd,
+					vmf->address, &vmf->ptl);
+			if (likely(pte_same(*vmf->pte, vmf->orig_pte)))
+				ret = VM_FAULT_OOM;
+			delayacct_clear_flag(current, DELAYACCT_PF_SWAPIN);
+			goto unlock;
+		}
+
+		/* Had to read the page from swap area: Major fault */
+		ret = VM_FAULT_MAJOR;
+		count_vm_event(PGMAJFAULT);
+		count_memcg_event_mm(vma->vm_mm, PGMAJFAULT);
+	} else if (PageHWPoison(page)) {
+		/*
+		 * hwpoisoned dirty swapcache pages are kept for killing
+		 * owner processes (which may be unknown at hwpoison time)
+		 */
+		ret = VM_FAULT_HWPOISON;
+		delayacct_clear_flag(current, DELAYACCT_PF_SWAPIN);
+		goto out_release;
+	}
+
+	locked = lock_page_or_retry(page, vma->vm_mm, vmf->flags);
+
+	delayacct_clear_flag(current, DELAYACCT_PF_SWAPIN);
+	if (!locked) {
+		ret |= VM_FAULT_RETRY;
+		goto out_release;
+	}
+
+	/*
+	 * Make sure try_to_free_swap or reuse_swap_page or swapoff did not
+	 * release the swapcache from under us.  The page pin, and pte_same
+	 * test below, are not enough to exclude that.  Even if it is still
+	 * swapcache, we need to check that the page's swap has not changed.
+	 */
+	if (unlikely((!PageSwapCache(page) ||
+			page_private(page) != entry.val)) && swapcache)
+		goto out_page;
+
+	page = ksm_might_need_to_copy(page, vma, vmf->address);
+	if (unlikely(!page)) {
+		ret = VM_FAULT_OOM;
+		page = swapcache;
+		goto out_page;
+	}
+
+	cgroup_throttle_swaprate(page, GFP_KERNEL);
+
+	/*
+	 * Back out if somebody else already faulted in this pte.
+	 */
+	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd, vmf->address,
+			&vmf->ptl);
+	if (unlikely(!pte_same(*vmf->pte, vmf->orig_pte)))
+		goto out_nomap;
+
+	if (unlikely(!PageUptodate(page))) {
+		ret = VM_FAULT_SIGBUS;
+		goto out_nomap;
+	}
+
+	/*
+	 * The page isn't present yet, go ahead with the fault.
+	 *
+	 * Be careful about the sequence of operations here.
+	 * To get its accounting right, reuse_swap_page() must be called
+	 * while the page is counted on swap but not yet in mapcount i.e.
+	 * before page_add_anon_rmap() and swap_free(); try_to_free_swap()
+	 * must be called after the swap_free(), or it will never succeed.
+	 */
+
+	inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
+	dec_mm_counter_fast(vma->vm_mm, MM_SWAPENTS);
+	pte = mk_pte(page, vma->vm_page_prot);
+	if ((vmf->flags & FAULT_FLAG_WRITE) && reuse_swap_page(page, NULL)) {
+		pte = maybe_mkwrite(pte_mkdirty(pte), vma);
+		vmf->flags &= ~FAULT_FLAG_WRITE;
+		ret |= VM_FAULT_WRITE;
+		exclusive = RMAP_EXCLUSIVE;
+	}
+	flush_icache_page(vma, page);
+	if (pte_swp_soft_dirty(vmf->orig_pte))
+		pte = pte_mksoft_dirty(pte);
+	if (pte_swp_uffd_wp(vmf->orig_pte)) {
+		pte = pte_mkuffd_wp(pte);
+		pte = pte_wrprotect(pte);
+	}
+	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, pte);
+	arch_do_swap_page(vma->vm_mm, vma, vmf->address, pte, vmf->orig_pte);
+	vmf->orig_pte = pte;
+
+	/* ksm created a completely new copy */
+	if (unlikely(page != swapcache && swapcache)) {
+		page_add_new_anon_rmap(page, vma, vmf->address, false);
+		lru_cache_add_inactive_or_unevictable(page, vma);
+	} else {
+		do_page_add_anon_rmap(page, vma, vmf->address, exclusive);
+	}
+
+	swap_free(entry);
+	if (mem_cgroup_swap_full(page) ||
+	    (vma->vm_flags & VM_LOCKED) || PageMlocked(page))
+		try_to_free_swap(page);
+	unlock_page(page);
+	if (page != swapcache && swapcache) {
+		/*
+		 * Hold the lock to avoid the swap entry to be reused
+		 * until we take the PT lock for the pte_same() check
+		 * (to avoid false positives from pte_same). For
+		 * further safety release the lock after the swap_free
+		 * so that the swap count won't change under a
+		 * parallel locked swapcache.
+		 */
+		unlock_page(swapcache);
+		put_page(swapcache);
+	}
+
+	if (vmf->flags & FAULT_FLAG_WRITE) {
+		ret |= do_wp_page(vmf);
+		if (ret & VM_FAULT_ERROR)
+			ret &= VM_FAULT_ERROR;
+		goto out;
+	}
+
+	/* No need to invalidate - it was non-present before */
+	update_mmu_cache(vma, vmf->address, vmf->pte);
+
+unlock:
+	pte_unmap_unlock(vmf->pte, vmf->ptl);
+out:
+	if (si)
+		put_swap_device(si);
+	return ret;
+out_nomap:
+	pte_unmap_unlock(vmf->pte, vmf->ptl);
+out_page:
+	unlock_page(page);
+out_release:
+	// printk(KERN_CRIT "\"3. Page fault at address\", %lx\n", vmf->address);
+
 	put_page(page);
 	if (page != swapcache && swapcache) {
 		unlock_page(swapcache);
@@ -4493,9 +4772,11 @@ static vm_fault_t wp_huge_pud(struct vm_fault *vmf, pud_t orig_pud)
  * The mmap_lock may have been released depending on flags and our return value.
  * See filemap_fault() and __folio_lock_or_retry().
  */
-static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
+static vm_fault_t handle_pte_fault(struct vm_fault *vmf, struct pt_regs *regs)
 {
 	pte_t entry;
+
+	// printk(KERN_CRIT "Handling pte fault at address %lx\n", vmf->address);
 
 	if (unlikely(pmd_none(*vmf->pmd))) {
 		/*
@@ -4545,6 +4826,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	}
 
 	if (!vmf->pte) {
+		// printk(KERN_CRIT "vmf->pte is NULL, at address %lx\n", vmf->address);
 		if (vma_is_anonymous(vmf->vma))
 			return do_anonymous_page(vmf);
 		else
@@ -4552,10 +4834,14 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	}
 
 	if (!pte_present(vmf->orig_pte))
-		return do_swap_page(vmf);
+		return do_swap_page_collect(vmf, regs);
+
+	// printk(KERN_CRIT "Did not do swap at address %lx\n", vmf->address);
 
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
+
+	// printk(KERN_CRIT "Did not do numa at address %lx\n", vmf->address);
 
 	vmf->ptl = pte_lockptr(vmf->vma->vm_mm, vmf->pmd);
 	spin_lock(vmf->ptl);
@@ -4598,7 +4884,7 @@ unlock:
  * return value.  See filemap_fault() and __folio_lock_or_retry().
  */
 static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
-		unsigned long address, unsigned int flags)
+		unsigned long address, unsigned int flags, struct pt_regs *regs)
 {
 	struct vm_fault vmf = {
 		.vma = vma,
@@ -4683,7 +4969,7 @@ retry_pud:
 		}
 	}
 
-	return handle_pte_fault(&vmf);
+	return handle_pte_fault(&vmf, regs);
 }
 
 /**
@@ -4781,7 +5067,7 @@ vm_fault_t handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
 	if (unlikely(is_vm_hugetlb_page(vma)))
 		ret = hugetlb_fault(vma->vm_mm, vma, address, flags);
 	else
-		ret = __handle_mm_fault(vma, address, flags);
+		ret = __handle_mm_fault(vma, address, flags, regs);
 
 	if (flags & FAULT_FLAG_USER) {
 		mem_cgroup_exit_user_fault();
