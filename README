@@ -16,3 +16,20 @@ several of them using the Restructured Text markup notation.
 Please read the Documentation/process/changes.rst file, as it contains the
 requirements for building and running the kernel, and information about
 the problems which may result by upgrading your kernel.
+
+
+--------------
+Setting up qemu to work on the deku project
+
+Build the kernel with required drivers (e1000 for networking) and install qemu.
+Create 2 disks. Rootfs using debootimage where you can create a minimal
+rootfs using debian. And an empty 30G qcow2 image using qemu-img.
+
+Boot the qemu using the run-qemu script. 
+To get networking working, update the /etc/network/interfaces file 
+with the eth0/ens3 entry (check using ip link show), use chatgpt/google
+to decide what to write in the file.
+
+Inside the guest, mount the 30G disk to /mnt/disk and update fstab to
+make sure the disk is always mounted when qemu reboots.
+
