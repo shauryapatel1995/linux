@@ -3698,9 +3698,9 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	/* Maybe try to print out the page content */
 	long* p = (long*) vmf->address;
 	// print the content of the page
-	int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
-	for (i = 0; i < total_num; i += increment) {
-		printk(KERN_CRIT "%lx, %lx, %lx, %lx, %lx, %lx, %lx, %lx, %lx\n",i, p[i], p[i+1], p[i+2], p[i+3], p[i+4], p[i+5], p[i+6], p[i+7]); 
+	// int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
+	for (int i = 0; i < 512; i++, p++) {
+		printk(KERN_CRIT "Loc: %d, val: %lx\n",i,*p); 
 	}
 
 unlock:
