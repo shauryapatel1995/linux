@@ -3692,11 +3692,12 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(vma, vmf->address, vmf->pte);
 
-	printk(KERN_CRIT "\"%d PF addr and ip\", %lx, %lx\n", qemu_page_count, vmf->address, regs->ip);
+	printk(KERN_CRIT "\"%d PF addr and ip\", %lx, %lx\n", 
+            qemu_page_count, vmf->address, regs->ip);
 	qemu_page_count++;
 
 	/* Maybe try to print out the page content */
-	long* p = (long*) vmf->address;
+	uint64_t* p = (uint64_t*) vmf->address;
 	// print the content of the page
 	// int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
 	for (int i = 0; i < 512; i++, p++) {
