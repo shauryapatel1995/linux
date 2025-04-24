@@ -3703,9 +3703,9 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
     if (memcg_memory_max < limit) {
         printk(KERN_CRIT "\"%d PF addr, faulting addr, and ip\", %lx %lx %lx\n", 
                 qemu_page_count, vmf->address, vmf->faulting_address, regs->ip);
-        //qemu_page_count++;
-
-        /* Maybe try to print out the page content */
+        qemu_page_count++;
+	
+        /* Print out the page content */
         uint64_t* p = (uint64_t*) vmf->address;
         // print the content of the page
         // int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);

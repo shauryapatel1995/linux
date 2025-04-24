@@ -5,6 +5,7 @@ sudo qemu-system-x86_64 \
   -nographic \
   -drive file=rootfs.img,media=disk,format=raw \
   -drive file=mydisk.img,media=disk,format=qcow2 \
+  -drive file=/mnt/ramdisk/my_disk.img,media=disk,format=raw \
   -append "console=ttyS0 nokaslr root=/dev/sda rw" \
   -m 32G \
   --enable-kvm \
