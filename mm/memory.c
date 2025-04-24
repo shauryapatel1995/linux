@@ -3700,8 +3700,9 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	uint64_t* p = (uint64_t*) vmf->address;
 	// print the content of the page
 	// int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
-	for (int i = 0; i < 512; i++, p++) {
-		printk(KERN_CRIT "Loc: %d, val: %lx\n",i,*p); 
+    int i = 0;
+	for(i = 0; i < 512; i++, p++) {
+		printk(KERN_CRIT "Loc: %d, val: %llx\n",i,*p); 
 	}
 
 unlock:
