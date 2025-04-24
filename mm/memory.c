@@ -3692,7 +3692,7 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(vma, vmf->address, vmf->pte);
 
-	printk(KERN_CRIT "\"%d PF addr and ip\", %lx, %lx\n", 
+	printk(KERN_CRIT "\"%d PF addr, faulting addr, and ip\", %lx %lx %lx\n", 
             qemu_page_count, vmf->address, regs->ip);
 	qemu_page_count++;
 
@@ -4888,6 +4888,7 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 	struct vm_fault vmf = {
 		.vma = vma,
 		.address = address & PAGE_MASK,
+        .faulting_address = address,
 		.flags = flags,
 		.pgoff = linear_page_index(vma, address),
 		.gfp_mask = __get_fault_gfp_mask(vma),
