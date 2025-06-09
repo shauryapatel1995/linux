@@ -3713,7 +3713,7 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
         for(i = 0; i < 512; i++, p++) {
             if (*p == 0)
                 continue;
-            pte_t * pte = lookup_address_in_pgd(curr->active_mm->pgd, *p, &level);
+            pte_t * pte = lookup_address_in_pgd(vmf->vma->vm_mm->pgd, *p, &level);
             if (pte)
                 printk(KERN_CRIT "Loc: %d, val: %llx, present:%d\n",
                         i,*p, pte_present(*pte)); 
