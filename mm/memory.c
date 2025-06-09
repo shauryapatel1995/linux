@@ -3711,6 +3711,8 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
         // int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
         int i = 0;
         for(i = 0; i < 512; i++, p++) {
+            if (*p == 0)
+                continue;
             pte_t * pte = lookup_address_in_pgd(curr->active_mm->pgd, *p, &level);
             if (pte)
                 printk(KERN_CRIT "Loc: %d, val: %llx, present:%d\n",
