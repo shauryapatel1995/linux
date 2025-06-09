@@ -39,6 +39,7 @@
  * Aug/Sep 2004 Changed to four level page tables (Andi Kleen)
  */
 
+#include "asm/pgtable_types.h"
 #include <linux/kernel_stat.h>
 #include <linux/mm.h>
 #include <linux/sched/mm.h>
@@ -3693,6 +3694,8 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	update_mmu_cache(vma, vmf->address, vmf->pte);
 
     struct mem_cgroup *memcg = page_memcg_check(page);
+    struct task_struct *curr = current;
+    int level = 0;
     unsigned long memcg_memory_max = mem_cgroup_get_max(memcg);
     unsigned long limit = ((unsigned long)10*1024*1024*1024);
     // XXX(shaurp): We use this to make sure that only our app is traced.
@@ -3708,7 +3711,9 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
         // int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
         int i = 0;
         for(i = 0; i < 512; i++, p++) {
-            printk(KERN_CRIT "Loc: %d, val: %llx\n",i,*p); 
+            pge_t * pte = lookup_address_in_pgd(curr->mm->pgd, *p, &level);
+            if (pte)
+                printk(KERN_CRIT "Loc: %d, val: %llx\n",i,*p); 
         }
     }
 unlock:
