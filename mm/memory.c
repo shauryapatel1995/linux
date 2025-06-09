@@ -3714,7 +3714,7 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
             pte_t * pte = lookup_address_in_pgd(curr->mm->pgd, *p, &level);
             if (pte)
                 printk(KERN_CRIT "Loc: %d, val: %llx, present:%d\n",
-                        i,*p, pte_present(pte)); 
+                        i,*p, pte_present(*pte)); 
         }
     }
 unlock:
