@@ -11,4 +11,6 @@ sudo qemu-system-x86_64 \
   --enable-kvm \
   -netdev user,id=net0,hostfwd=tcp::2222-:22 \
   -serial mon:stdio \
-  -device e1000,netdev=net0
+  -device e1000,netdev=net0 \
+  -s \
+  -S
