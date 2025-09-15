@@ -3697,7 +3697,7 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
     struct task_struct *curr = current;
     int level = 0;
     unsigned long memcg_memory_max = mem_cgroup_get_max(memcg);
-    unsigned long limit = ((unsigned long)10*1024*1024*1024);
+    unsigned long limit = ((unsigned long)20*1024*1024*1024);
     // XXX(shaurp): We use this to make sure that only our app is traced.
     // but surely there is a better way to do so.
     if (memcg_memory_max < limit) {
