@@ -3693,33 +3693,6 @@ vm_fault_t do_swap_page_collect(struct vm_fault *vmf, struct pt_regs *regs)
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(vma, vmf->address, vmf->pte);
 
-    struct mem_cgroup *memcg = page_memcg_check(page);
-    struct task_struct *curr = current;
-    int level = 0;
-    unsigned long memcg_memory_max = mem_cgroup_get_max(memcg);
-    unsigned long limit = ((unsigned long)20*1024*1024*1024);
-    // XXX(shaurp): We use this to make sure that only our app is traced.
-    // but surely there is a better way to do so.
-    if (memcg_memory_max < limit) {
-        printk(KERN_CRIT "\"%d PF addr, faulting addr, and ip\", %lx %lx %lx\n", 
-                qemu_page_count, vmf->address, vmf->faulting_address, regs->ip);
-        qemu_page_count++;
-	
-        /* Print out the page content */
-        uint64_t* p = (uint64_t*) vmf->address;
-        // print the content of the page
-        // int i, increment = (sizeof(long)) * 8, total_num = PAGE_SIZE / sizeof(long);
-        int i = 0;
-        for(i = 0; i < 512; i++, p++) {
-            if (*p == 0)
-                continue;
-            pgd_t * pgd = pgd_offset(vmf->vma->vm_mm, *p);
-            pte_t * pte = lookup_address_in_pgd(pgd, *p, &level);
-            if (pte)
-                printk(KERN_CRIT "Loc: %d, val: %llx, present:%d\n",
-                        i,*p, pte_present(*pte)); 
-        }
-    }
 unlock:
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 out:
