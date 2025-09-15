@@ -1,0 +1,4 @@
+all:
+	@echo "Something, and then exit!"
+
+.PHONY: all

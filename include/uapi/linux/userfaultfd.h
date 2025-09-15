@@ -83,7 +83,7 @@
 				      struct uffdio_writeprotect)
 #define UFFDIO_CONTINUE		_IOWR(UFFDIO, _UFFDIO_CONTINUE,	\
 				      struct uffdio_continue)
-
+// TODO(shaurp): Add the PC here to the data structure.
 /* read() structure */
 struct uffd_msg {
 	__u8	event;

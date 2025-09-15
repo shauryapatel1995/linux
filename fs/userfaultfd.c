@@ -198,6 +198,7 @@ static inline struct uffd_msg userfault_msg(unsigned long address,
 	msg_init(&msg);
 	msg.event = UFFD_EVENT_PAGEFAULT;
 	msg.arg.pagefault.address = address;
+    // TODO(shaurp): Add the PC here.
 	/*
 	 * These flags indicate why the userfault occurred:
 	 * - UFFD_PAGEFAULT_FLAG_WP indicates a write protect fault.
@@ -481,6 +482,7 @@ vm_fault_t handle_userfault(struct vm_fault *vmf, unsigned long reason)
 
 	init_waitqueue_func_entry(&uwq.wq, userfaultfd_wake_function);
 	uwq.wq.private = current;
+    // TODO(shaurp): Update this to pass the PC.
 	uwq.msg = userfault_msg(vmf->address, vmf->flags, reason,
 			ctx->features);
 	uwq.ctx = ctx;
