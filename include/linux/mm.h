@@ -525,6 +525,7 @@ struct vm_fault {
 		pgoff_t pgoff;			/* Logical page offset based on vma */
 		unsigned long address;		/* Faulting virtual address */
         unsigned long faulting_address; /* Actual faulting address */
+        unsigned long pc;   /* The user pc at which the page fault is happening */
 	};
 	enum fault_flag flags;		/* FAULT_FLAG_xxx flags
 					 * XXX: should really be 'const' */

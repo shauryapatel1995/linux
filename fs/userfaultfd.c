@@ -190,6 +190,7 @@ static inline void msg_init(struct uffd_msg *msg)
 }
 
 static inline struct uffd_msg userfault_msg(unsigned long address,
+                        unsigned long pc,
 					    unsigned int flags,
 					    unsigned long reason,
 					    unsigned int features)
@@ -482,8 +483,7 @@ vm_fault_t handle_userfault(struct vm_fault *vmf, unsigned long reason)
 
 	init_waitqueue_func_entry(&uwq.wq, userfaultfd_wake_function);
 	uwq.wq.private = current;
-    // TODO(shaurp): Update this to pass the PC.
-	uwq.msg = userfault_msg(vmf->address, vmf->flags, reason,
+	uwq.msg = userfault_msg(vmf->address, vmf->pc, vmf->flags, reason,
 			ctx->features);
 	uwq.ctx = ctx;
 	uwq.waken = false;
