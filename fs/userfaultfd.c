@@ -199,6 +199,7 @@ static inline struct uffd_msg userfault_msg(unsigned long address,
 	msg_init(&msg);
 	msg.event = UFFD_EVENT_PAGEFAULT;
 	msg.arg.pagefault.address = address;
+    msg.arg.pagefault.pc = pc;
     // TODO(shaurp): Add the PC here.
 	/*
 	 * These flags indicate why the userfault occurred:
