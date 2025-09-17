@@ -89,15 +89,15 @@ struct uffd_msg {
 
 	__u8	reserved1;
 	__u16	reserved2;
-	__u32	reserved3;
+	//__u32	reserved3;
 
 	union {
 		struct {
 			__u64	flags;
 			__u64	address;
-            __u64   pc;
+            		__u64   pc;
 			union {
-				__u32 ptid;
+				//__u32 ptid;
 			} feat;
 		} pagefault;
 
