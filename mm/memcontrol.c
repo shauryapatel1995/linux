@@ -5324,6 +5324,10 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	INIT_LIST_HEAD(&memcg->event_list);
 	spin_lock_init(&memcg->event_list_lock);
 	memcg->socket_pressure = jiffies;
+	//paul
+	atomic64_set(&memcg->nr_promotions, 0);
+	atomic64_set(&memcg->nr_unique_pages, 0);
+	memcg->page_logger_enabled = false;  
 #ifdef CONFIG_MEMCG_KMEM
 	memcg->kmemcg_id = -1;
 	INIT_LIST_HEAD(&memcg->objcg_list);
@@ -6618,6 +6622,55 @@ static int memory_stat_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/*paul experimental code to add count to /sys/fs/cgroup/ files*/
+static int memory_cgroup_promotions_show(struct seq_file *sf, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
+	seq_printf(sf, "%lld\n", atomic64_read(&memcg->nr_promotions));
+	return 0;
+}
+
+//paul code to count page accesses
+static int memory_pages_show(struct seq_file *m, void *v)
+{
+    struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+    seq_printf(m, "%lld\n", atomic64_read(&memcg->nr_unique_pages));
+    return 0;
+}
+
+//paul page logger handling
+static int memory_count_pages_show(struct seq_file *m, void *v)
+{
+    struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+    seq_printf(m, "%d\n", memcg->page_logger_enabled ? 1 : 0);
+    return 0;
+}
+
+static ssize_t memory_count_pages_write(struct kernfs_open_file *of,
+                                                 char *buf, size_t nbytes,
+                                                 loff_t off)
+{
+    struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+    unsigned int val;
+    int ret;
+
+    /*
+     * kstrtouint handles leading/trailing whitespace and newlines,
+     * so "echo 1 > memory.page_logger_enabled" works correctly.
+     */
+    ret = kstrtouint(strstrip(buf), 0, &val);
+    if (ret)
+        return ret;
+
+    if (val > 1)
+        return -EINVAL;
+
+    memcg->page_logger_enabled = (val == 1);
+    return nbytes;
+}
+
 #ifdef CONFIG_NUMA
 static inline unsigned long lruvec_page_state_output(struct lruvec *lruvec,
 						     int item)
@@ -6796,6 +6849,21 @@ static struct cftype memory_files[] = {
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
 	},
+	{   .name = "promotions",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = memory_cgroup_promotions_show,
+	},
+	{
+        .name     = "pages",
+        .flags    = CFTYPE_NOT_ON_ROOT,
+        .seq_show = memory_pages_show,
+    },
+	{
+        .name     = "count_pages",
+        .flags    = CFTYPE_NOT_ON_ROOT,
+        .seq_show = memory_count_pages_show,
+        .write    = memory_count_pages_write,
+    },
 	{ }	/* terminate */
 };
 
@@ -7008,6 +7076,7 @@ out:
 	return ret;
 }
 
+//paul: called when a page fault happens, identifies which cgroup own the task
 int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp)
 {
 	struct mem_cgroup *memcg;
@@ -7403,6 +7472,9 @@ static int __init mem_cgroup_init(void)
 		spin_lock_init(&rtpn->lock);
 		soft_limit_tree.rb_tree_per_node[node] = rtpn;
 	}
+
+	//begin paul thread for page logger
+	page_logger_init();
 
 	return 0;
 }

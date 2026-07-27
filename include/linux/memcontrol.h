@@ -233,10 +233,18 @@ struct mem_cgroup {
 
 	unsigned long soft_limit;
 
-    // TODO(paul): Learn how vmpressure works.
 	/* vmpressure notifications */
 	struct vmpressure vmpressure;
-    // TODO(paul): Add number of promotions here.
+
+	//paul added fields
+	/* Number of promotions and unique pages*/
+    atomic64_t nr_promotions;
+
+	/* Per-cgroup state for the page access logger. */
+	atomic64_t nr_unique_pages;
+
+	//should we log pages for this cgroup?
+	bool page_logger_enabled;
 
 	/*
 	 * Should the OOM killer kill all belonging tasks, had it kill one?
@@ -341,6 +349,10 @@ struct mem_cgroup {
 
 	struct mem_cgroup_per_node *nodeinfo[];
 };
+
+/*paul page logger def*/
+void page_logger_init(void);
+void page_logger_cleanup(void);
 
 /*
  * size of first charge trial.

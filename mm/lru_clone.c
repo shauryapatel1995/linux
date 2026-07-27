@@ -1,0 +1,358 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * mm/lru_clone.c (lru_mpc)
+ *
+ * added by paul
+ * THIS CODE IS INCOMPLETE
+ * it has not been tested and probably has a few bugs
+ * it is more of a proof of concept, to show how I would implement
+ * fast page depth tracking in linux
+ * 
+ * design: on page access, an operation is added to the operation queue
+ * every once in a while, or when the op queue gets too full, the opqueue is emptied
+ * all operations are performed on the lru list (linked list) and the fenwick tree
+ * then if the remaining space in the fenwick tree is smaller than the opqueue size,
+ * the fenwick tree is redrawn in o(n) time by traversing the lru list 
+ * 
+ * for this to work opqueue needs to be big enough that it doesn't need to be emptied while ft is being redrawn
+ *
+ * handling concurrency:
+ * enqueue opqueue: must grab spinlock and use smp function to sync with reader
+ * dequeue opqueue: must use smp function to sync with writer, can be done without lock
+ * touching lru list/fenwick tree: to prevent race conditions, must first set list_in_use flag
+ * using atomic_cmpxchg -- DO NOT use atomic_read and atomic_set as two different operations
+ */
+
+#include "fenwick.h"
+#include <linux/lru_clone.h>
+#include <linux/mm.h>
+#include <linux/types.h>
+#include <linux/list.h>
+#include <linux/atomic.h>
+#include <linux/spinlock.h>
+#include <linux/circ_buf.h>
+#include <linux/string.h>
+#include <linux/kthread.h>
+#include <linux/wait.h>
+#include <linux/slab.h>
+
+/* ========================================================================== *
+ * 1. Macros & Data Structures
+ * ========================================================================== */
+
+#define LRU_OP_QUEUE_SIZE 16384
+#define LRU_OP_QUEUE_CAPACITY_THRESHOLD (LRU_OP_QUEUE_SIZE / 5)
+
+struct lru_clone_node {
+    struct list_head lru;
+    unsigned long index;
+    u64 value;
+};
+
+struct lru_clone {
+    struct list_head lru;
+    struct circ_buf op_queue;
+    struct fenwick_tree *ft;
+
+    struct task_struct *upkeep_thread;
+    wait_queue_head_t   upkeep_wait;
+    atomic_t list_in_use;
+    spinlock_t lock;
+};
+
+// you could make this smaller by using an enumeration rather than a function pointer but I did not do this
+struct lru_op {
+    void (*op_fn)(struct lru_clone *lc, struct lru_clone_node *node);
+    struct lru_clone_node *node;
+    unsigned long timestamp;
+};
+
+
+/* ========================================================================== *
+ * 2. Core Internal Operations (Deferred via op_fn)
+ * ========================================================================== */
+// Methods assume that either we hold the lock or the list_in_use flag
+
+static struct lru_clone_node* init_lru_clone_node(u64 value) {
+    struct lru_clone_node *node = kmalloc(sizeof(struct lru_clone_node), GFP_KERNEL);
+    if (node)
+        node->value = value;
+    return node;
+}
+
+// performs an add operation to the lru list and fenwick tree
+static void do_lru_add(struct lru_clone *lc, struct lru_clone_node *node) {
+    list_add_tail(&node->lru, &lc->lru);
+    node->index = fenwick_add_new(lc->ft, node->value);
+}
+
+// performs an access operation to lru list and fenwick tree
+static void do_lru_access(struct lru_clone *lc, struct lru_clone_node *node) {
+    list_move_tail(&node->lru, &lc->lru);
+    node->index = fenwick_move_to_back(&lc->ft, node->index, node->value);
+}
+
+// performs an evict operation to lru list and fenwick tree
+static void do_lru_evict(struct lru_clone *lc, struct lru_clone_node *node) {
+    list_del(&node->lru);
+    fenwick_remove(&lc->ft, node->index, node->value);
+    kfree(node);
+}
+
+
+/* ========================================================================== *
+ * 3. Fenwick Tree Maintenance & Queue Drain
+ * ========================================================================== */
+
+// assumes we have set the flag here
+static inline bool fenwick_needs_redraw(struct lru_clone *lc) {
+    return lc->ft->index == (lc->ft->array_size - LRU_OP_QUEUE_SIZE);
+}
+
+// redraws fenwick tree in place
+static void redraw_fenwick_tree(struct lru_clone *lc) {
+    struct lru_clone_node *node;
+    unsigned long i, parent, n = 0;
+    u64 *array = lc->ft->array;
+    unsigned long size = lc->ft->array_size;
+
+    // zero the array first
+    memset(array, 0, (size + 1) * sizeof(array[0]));
+
+    // o(n) algorithm for fast draw of fenwick tree
+    list_for_each_entry(node, &lc->lru, lru) {
+        n++;
+        array[n] = node->value;
+        node->index = n;
+    }
+
+    for (i = 1; i <= size; i++) {
+        parent = i + (i & (-i));
+        if (parent <= size)
+            array[parent] += array[i];
+    }
+
+    // set ft internal index
+    lc->ft->index = n;
+}
+
+// clears queue, assumes list_in_use is set, but does not need to hold lock
+static void op_queue_clear(struct lru_clone *lc)
+{
+    struct circ_buf *cb = &lc->op_queue;
+    unsigned long head, tail;
+
+    while (1) {
+        head = smp_load_acquire(&cb->head);   /* pairs with producer's release */
+        tail = cb->tail;
+
+        if (!CIRC_CNT(head, tail, LRU_OP_QUEUE_SIZE))
+            break;
+
+        struct lru_op op = ((struct lru_op *)cb->buf)[tail];
+
+        smp_store_release(&cb->tail,
+                           (tail + 1) & (LRU_OP_QUEUE_SIZE - 1));
+
+        op.op_fn(lc, op.node);
+    }
+}
+
+// does concurrency safe enqueue then notifies lru draining thread if list is getting full
+static void op_queue_enqueue(
+    struct lru_clone *lc, 
+    void (*op_fn)(struct lru_clone *lc, struct lru_clone_node *node),
+    struct lru_clone_node *node,
+    unsigned long timestamp
+) {
+    struct circ_buf *cb = &lc->op_queue;
+    unsigned long head, tail;
+
+    spin_lock(&lc->lock);
+
+    head = cb->head;
+    tail = READ_ONCE(cb->tail);
+
+    // assume that overflows do not happen in practice
+    struct lru_op *slot = &((struct lru_op *)cb->buf)[head];
+    slot->op_fn = op_fn;
+    slot->node = node;
+    slot->timestamp = timestamp;
+
+    smp_store_release(&cb->head, (head + 1) & (LRU_OP_QUEUE_SIZE - 1));
+    spin_unlock(&lc->lock);
+
+    // check queue needs to be emptied
+    if (CIRC_SPACE(head, tail, LRU_OP_QUEUE_SIZE) <= LRU_OP_QUEUE_CAPACITY_THRESHOLD) {
+        // only call redraw if we were the thread able to set the flag
+        if (atomic_cmpxchg(&lc->list_in_use, 0, 1) == 0) {
+            wake_up(&lc->upkeep_wait);
+        }
+    }
+}
+
+
+/* ========================================================================== *
+ * 4. Thread Lifecycle & Upkeep Logic
+ * ========================================================================== */
+
+// check empty opqueue -> check should redraw ft -> redraw ft -> set list in use back to 0
+static void do_lru_clone_upkeep(struct lru_clone *lc) {
+    op_queue_clear(lc);
+    if (fenwick_needs_redraw(lc))
+        redraw_fenwick_tree(lc);
+    atomic_set(&lc->list_in_use, 0);
+}
+
+// main loop
+static int lru_clone_upkeep_thread(void *data)
+{
+    struct lru_clone *lc = data;
+
+    while (!kthread_should_stop()) {
+        wait_event_interruptible(lc->upkeep_wait,
+            atomic_read(&lc->list_in_use) || kthread_should_stop());
+
+        if (kthread_should_stop())
+            break;
+
+        do_lru_clone_upkeep(lc);
+    }
+
+    return 0;
+}
+
+// thread init function
+static int lru_clone_upkeep_init(struct lru_clone *lc)
+{
+    init_waitqueue_head(&lc->upkeep_wait);
+
+    lc->upkeep_thread = kthread_run(lru_clone_upkeep_thread, lc,
+                                     "lru_clone_upkeep");
+    if (IS_ERR(lc->upkeep_thread)) {
+        int err = PTR_ERR(lc->upkeep_thread);
+        lc->upkeep_thread = NULL;
+        return err;
+    }
+
+    return 0;
+}
+
+// teardown
+static void lru_clone_upkeep_stop(struct lru_clone *lc)
+{
+    if (lc->upkeep_thread) {
+        kthread_stop(lc->upkeep_thread);
+        lc->upkeep_thread = NULL;
+    }
+}
+
+
+/* ========================================================================== *
+ * 5. Initialization & Public API
+ * ========================================================================== */
+
+// fenwick size probably wants to depend on cache size so is a variable
+struct lru_clone* lru_clone_init(unsigned long fenwick_size) {
+    // allocate lru_clone struct
+    struct lru_clone *lc = kmalloc(sizeof(struct lru_clone), GFP_KERNEL);
+    if (!lc) {
+        return NULL;
+    }
+
+    // allocate operation queue
+    lc->op_queue.buf = kmalloc(LRU_OP_QUEUE_SIZE * sizeof(struct lru_op), GFP_KERNEL);
+    if (!lc->op_queue.buf) {
+        kfree(lc);
+        return NULL;
+    }
+    lc->op_queue.head = 0;
+    lc->op_queue.tail = 0;
+
+    // allocate fenwick tree
+    lc->ft = fenwick_init(fenwick_size);
+    if (!lc->ft) {
+        kfree(lc->op_queue.buf);
+        kfree(lc);
+        return NULL;
+    }
+
+    //start upkeep thread
+    if (lru_clone_upkeep_init(lc) != 0) {
+        kfree(lc->op_queue.buf);
+        kfree(lc);
+        fenwick_free(lc->ft);
+        return NULL;
+    }
+
+    // initialize other members
+    INIT_LIST_HEAD(&lc->lru);
+    atomic_set(&lc->list_in_use, 0);
+    spin_lock_init(&lc->lock);
+    return lc;
+}
+
+// handles a new page being accessed, and returns a pointer to its lru_clone_node
+struct lru_clone_node* lru_clone_add_new(struct lru_clone *lc, u64 value, unsigned long timestamp) {
+    struct lru_clone_node *node = init_lru_clone_node(value);
+    if (node)
+        op_queue_enqueue(lc, do_lru_add, node, timestamp);
+    return node;
+}
+
+// handles an existing page being accessed, returns a pointer to its lru_clone_node
+void lru_clone_access(struct lru_clone *lc, struct lru_clone_node *node, unsigned long timestamp) {
+    op_queue_enqueue(lc, do_lru_access, node, timestamp);
+}
+
+// handles eviction and frees the associated node.
+void lru_clone_evict(struct lru_clone *lc, struct lru_clone_node *node, unsigned long timestamp) {
+    op_queue_enqueue(lc, do_lru_evict, node, timestamp);
+}
+
+
+/* ========================================================================== *
+ * 6. Teardown & Cleanup
+ * ========================================================================== */
+
+void lru_clone_destroy(struct lru_clone *lc)
+{
+    struct lru_clone_node *node, *next;
+
+    if (!lc)
+        return;
+
+    // 1. Stop the upkeep thread first so it doesn't try to process the queue
+    // while we are freeing the underlying data structures.
+    lru_clone_upkeep_stop(lc);
+
+    // 2. Lock the list. Since we are destroying the structure, we assume 
+    // no new operations are being submitted, but this ensures safety.
+    atomic_set(&lc->list_in_use, 1);
+
+    // 3. Flush the op_queue. This is critical! 
+    // Any pending do_lru_add ops have allocated nodes that aren't in the list yet.
+    // Any pending do_lru_evict ops have nodes that need to be freed.
+    // Clearing the queue forces these nodes to their final state.
+    op_queue_clear(lc);
+
+    // 4. Safely iterate through the LRU list and free all remaining nodes.
+    // We MUST use list_for_each_entry_safe when deleting elements during iteration.
+    list_for_each_entry_safe(node, next, &lc->lru, lru) {
+        list_del(&node->lru);
+        kfree(node);
+    }
+
+    // 5. Free the Fenwick tree.
+    // Note: I am assuming you have a fenwick_free() function in fenwick.h.
+    // If not, you need to add it, or manually free(lc->ft->array) then free(lc->ft).
+    if (lc->ft)
+        fenwick_free(lc->ft);
+
+    // 6. Free the operation queue buffer
+    if (lc->op_queue.buf)
+        kfree(lc->op_queue.buf);
+
+    // 7. Finally, free the main structure
+    kfree(lc);
+}
