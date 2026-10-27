@@ -22,6 +22,9 @@
 #include <linux/huge_mm.h>
 #include <linux/shmem_fs.h>
 #include <linux/swap_prefetch.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/swapin.h>
 #include "internal.h"
 #include "swap.h"
 

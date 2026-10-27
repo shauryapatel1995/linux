@@ -80,6 +80,7 @@
 #include <linux/sched/sysctl.h>
 
 #include <trace/events/kmem.h>
+#include <trace/events/swapin.h>
 
 #include <asm/io.h>
 #include <asm/mmu_context.h>
@@ -3808,6 +3809,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (folio)
 		page = folio_file_page(folio, swp_offset(entry));
 	swapcache = folio;
+	/* user-space PC: for a fault raised inside a system call (e.g. a
+	 * copy_to_user()), the syscall's call site rather than a kernel PC */
+	trace_swapin_fault(vmf->real_address,
+			   instruction_pointer(task_pt_regs(current)), !!folio);
 
 	if (!folio) {
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
