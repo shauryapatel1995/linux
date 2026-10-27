@@ -21,6 +21,7 @@
 #include <linux/swap_slots.h>
 #include <linux/huge_mm.h>
 #include <linux/shmem_fs.h>
+#include <linux/swap_prefetch.h>
 #include "internal.h"
 #include "swap.h"
 
@@ -838,6 +839,113 @@ skip:
 				     NULL);
 }
 
+/*
+ * Pluggable swap-in prefetcher - see include/linux/swap_prefetch.h. At most
+ * one is registered at a time; predict() runs under rcu_read_lock(), and
+ * unregistering waits for any call in flight before the module can go away.
+ */
+static const struct swap_prefetch_ops __rcu *swap_prefetcher;
+static DEFINE_MUTEX(swap_prefetcher_lock);
+
+int register_swap_prefetcher(const struct swap_prefetch_ops *ops)
+{
+	int ret = 0;
+
+	if (!ops || !ops->predict)
+		return -EINVAL;
+	mutex_lock(&swap_prefetcher_lock);
+	if (rcu_access_pointer(swap_prefetcher))
+		ret = -EBUSY;
+	else
+		rcu_assign_pointer(swap_prefetcher, ops);
+	mutex_unlock(&swap_prefetcher_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(register_swap_prefetcher);
+
+void unregister_swap_prefetcher(const struct swap_prefetch_ops *ops)
+{
+	mutex_lock(&swap_prefetcher_lock);
+	if (rcu_access_pointer(swap_prefetcher) == ops)
+		RCU_INIT_POINTER(swap_prefetcher, NULL);
+	mutex_unlock(&swap_prefetcher_lock);
+	synchronize_rcu();
+}
+EXPORT_SYMBOL_GPL(unregister_swap_prefetcher);
+
+/* Queue the read of one page the prefetcher asked for, if it lies in the
+ * faulting VMA and page table and is swapped out - the same per-page steps
+ * as swap_vma_readahead(). */
+static void swap_pf_read_one(struct vm_fault *vmf, unsigned long addr,
+			     gfp_t gfp_mask, struct swap_iocb **splug)
+{
+	struct vm_area_struct *vma = vmf->vma;
+	pte_t *pte, pentry;
+	swp_entry_t entry;
+	struct page *page;
+	bool page_allocated;
+
+	/* unsigned: an address below 0 wraps above vm_end and is rejected */
+	if (addr < vma->vm_start || addr >= vma->vm_end ||
+	    (addr & PMD_MASK) != (vmf->address & PMD_MASK))
+		return;
+	pte = pte_offset_map(vmf->pmd, addr);
+	if (!pte)
+		return;
+	pentry = ptep_get_lockless(pte);
+	pte_unmap(pte);
+	if (!is_swap_pte(pentry))
+		return;
+	entry = pte_to_swp_entry(pentry);
+	if (unlikely(non_swap_entry(entry)))
+		return;
+	page = __read_swap_cache_async(entry, gfp_mask, vma, addr,
+				       &page_allocated);
+	if (!page)
+		return;
+	if (page_allocated) {
+		swap_readpage(page, false, splug);
+		SetPageReadahead(page);
+		count_vm_event(SWAP_RA);
+	}
+	put_page(page);
+}
+
+/* Read the faulting page plus every page the prefetcher asked for, all
+ * queued together under one plug so they go out in parallel. */
+static struct page *swap_pf_readahead(swp_entry_t fentry, gfp_t gfp_mask,
+				      struct vm_fault *vmf,
+				      const struct swap_prefetch_req *req)
+{
+	struct blk_plug plug;
+	struct swap_iocb *splug = NULL;
+	struct page *page;
+	bool page_allocated;
+	u64 bits;
+
+	blk_start_plug(&plug);
+	/* the faulting page's own read goes first */
+	page = __read_swap_cache_async(fentry, gfp_mask, vmf->vma,
+				       vmf->address, &page_allocated);
+	if (page) {
+		if (page_allocated)
+			swap_readpage(page, false, &splug);
+		put_page(page);
+	}
+	for (bits = req->fwd; bits; bits &= bits - 1)
+		swap_pf_read_one(vmf, vmf->address +
+				 (__ffs64(bits) + 1) * PAGE_SIZE, gfp_mask, &splug);
+	for (bits = req->back; bits; bits &= bits - 1)
+		swap_pf_read_one(vmf, vmf->address -
+				 (__ffs64(bits) + 1) * PAGE_SIZE, gfp_mask, &splug);
+	blk_finish_plug(&plug);
+	swap_read_unplug(splug);
+	lru_add_drain();
+	/* already in the swap cache (or being read) from above */
+	return read_swap_cache_async(fentry, gfp_mask, vmf->vma, vmf->address,
+				     NULL);
+}
+
 /**
  * swapin_readahead - swap in pages in hope we need them soon
  * @entry: swap entry of this memory
@@ -853,6 +961,18 @@ skip:
 struct page *swapin_readahead(swp_entry_t entry, gfp_t gfp_mask,
 				struct vm_fault *vmf)
 {
+	const struct swap_prefetch_ops *ops;
+	struct swap_prefetch_req req = { 0, 0 };
+	bool handled = false;
+
+	rcu_read_lock();
+	ops = rcu_dereference(swap_prefetcher);
+	if (ops)
+		handled = ops->predict(vmf, &req);
+	rcu_read_unlock();
+	if (handled)
+		return swap_pf_readahead(entry, gfp_mask, vmf, &req);
+
 	return swap_use_vma_readahead() ?
 			swap_vma_readahead(entry, gfp_mask, vmf) :
 			swap_cluster_readahead(entry, gfp_mask, vmf);
